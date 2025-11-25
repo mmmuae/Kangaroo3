@@ -68,9 +68,9 @@ class HashTable {
 public:
 
   HashTable();
-  int Add(Int *x,Int *d,uint32_t type,int128_t* minGap = NULL);
-  int Add(uint64_t h,int128_t *x,int128_t *d,int128_t* minGap = NULL);
-  int Add(uint64_t h,ENTRY *e,int128_t* minGap = NULL);
+  int Add(Int *x,Int *d,uint32_t type);
+  int Add(uint64_t h,int128_t *x,int128_t *d);
+  int Add(uint64_t h,ENTRY *e);
   uint64_t GetNbItem();
   void Reset();
   std::string GetSizeInfo();

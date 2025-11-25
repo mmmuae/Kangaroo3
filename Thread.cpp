@@ -367,7 +367,7 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
   count = getCPUCount() + getGPUCount();
   t1 = Timer::get_tick();
-  
+
   if( !endOfSearch ) {
     printf("\r[%.2f %s][GPU %.2f %s][Cnt 2^%.2f][%s]  ",
       avgKeyRate / 1000000.0,unit.c_str(),
@@ -375,6 +375,97 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       log2((double)count),
       GetTimeStr(t1 - startTime).c_str()
       );
+  }
+
+}
+
+// ----------------------------------------------------------------------------
+
+void Kangaroo::ScanGapsThread(TH_PARAM *p) {
+
+  // Background thread for periodic gap tracking
+  // This runs independently and doesn't affect the critical path
+
+#ifndef WIN64
+  setvbuf(stdout, NULL, _IONBF, 0);
+#endif
+
+  while(!endOfSearch) {
+
+    // Sleep for 3 seconds between scans
+    int delay = 3000;
+    while(!endOfSearch && delay > 0) {
+      Timer::SleepMillis(50);
+      delay -= 50;
+    }
+
+    if(endOfSearch) break;
+
+    // Scan hash table for gaps
+    int128_t localMinGap;
+    localMinGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
+    localMinGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+
+    // Scan through all hash buckets
+    for(uint32_t h = 0; h < HASH_SIZE && !endOfSearch; h++) {
+
+      LOCK(ghMutex);
+      uint32_t nbItem = hashTable.E[h].nbItem;
+
+      if(nbItem > 1) {
+        // Walk through entries in this bucket
+        for(uint32_t i = 0; i < nbItem - 1 && !endOfSearch; i++) {
+          ENTRY* entry1 = hashTable.E[h].items[i];
+          uint32_t type1 = (entry1->d.i64[1] & 0x4000000000000000ULL) != 0;
+
+          // Check remaining entries for opposite herd
+          for(uint32_t j = i + 1; j < nbItem && !endOfSearch; j++) {
+            ENTRY* entry2 = hashTable.E[h].items[j];
+            uint32_t type2 = (entry2->d.i64[1] & 0x4000000000000000ULL) != 0;
+
+            // Only calculate gap for opposite herds
+            if(type1 != type2) {
+              // Extract raw distances (bits 0-125)
+              int128_t dist1 = entry1->d;
+              int128_t dist2 = entry2->d;
+              dist1.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
+              dist2.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
+
+              // Calculate absolute difference
+              int128_t gap;
+              if(dist1.i64[1] > dist2.i64[1] ||
+                 (dist1.i64[1] == dist2.i64[1] && dist1.i64[0] > dist2.i64[0])) {
+                gap.i64[1] = dist1.i64[1] - dist2.i64[1];
+                gap.i64[0] = dist1.i64[0] - dist2.i64[0];
+                if(dist1.i64[0] < dist2.i64[0]) gap.i64[1]--;
+              } else {
+                gap.i64[1] = dist2.i64[1] - dist1.i64[1];
+                gap.i64[0] = dist2.i64[0] - dist1.i64[0];
+                if(dist2.i64[0] < dist1.i64[0]) gap.i64[1]--;
+              }
+
+              // Update local minimum
+              if(gap.i64[1] < localMinGap.i64[1] ||
+                 (gap.i64[1] == localMinGap.i64[1] && gap.i64[0] < localMinGap.i64[0])) {
+                localMinGap.i64[0] = gap.i64[0];
+                localMinGap.i64[1] = gap.i64[1];
+              }
+            }
+          }
+        }
+      }
+      UNLOCK(ghMutex);
+    }
+
+    // Update global minimum gap
+    LOCK(ghMutex);
+    if(localMinGap.i64[1] < minGap.i64[1] ||
+       (localMinGap.i64[1] == minGap.i64[1] && localMinGap.i64[0] < minGap.i64[0])) {
+      minGap.i64[0] = localMinGap.i64[0];
+      minGap.i64[1] = localMinGap.i64[1];
+    }
+    UNLOCK(ghMutex);
+
   }
 
 }

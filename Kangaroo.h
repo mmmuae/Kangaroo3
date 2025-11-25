@@ -154,6 +154,7 @@ public:
   bool CheckPartition(TH_PARAM* p);
   bool CheckWorkFile(TH_PARAM* p);
   void ProcessServer();
+  void ScanGapsThread(TH_PARAM *p);
 
   void AddConnectedClient();
   void RemoveConnectedClient();
