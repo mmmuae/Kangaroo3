@@ -250,6 +250,7 @@ private:
   uint64_t collisionInSameHerd;
   uint64_t tameCount;
   uint64_t wildCount;
+  int128_t lastGap;
   int128_t minGap;
   int128_t lowestGap;
   std::vector<Point> keysToSearch;
