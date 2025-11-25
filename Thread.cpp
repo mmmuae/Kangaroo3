@@ -212,23 +212,23 @@ void Kangaroo::ProcessServer() {
     t1 = Timer::get_tick();
 
     if(!endOfSearch) {
-      // Calculate tame/wild percentages
-      uint64_t totalDP = tameCount + wildCount;
-      double tamePercent = (totalDP > 0) ? (100.0 * tameCount / totalDP) : 0.0;
-      double wildPercent = (totalDP > 0) ? (100.0 * wildCount / totalDP) : 0.0;
+      // Calculate tame/wild ratio (1.000 = 50/50)
+      double twRatio = (wildCount > 0) ? ((double)tameCount / (double)wildCount) : 0.0;
 
-      // Calculate compact gap values (divide by 1 billion)
-      // Properly convert 128-bit values to double: high * 2^64 + low
-      double currentGap = ((double)minGap.i64[1] * 18446744073709551616.0 + (double)minGap.i64[0]) / 1000000000.0;
-      double lowest = ((double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0]) / 1000000000.0;
+      // Calculate compact gap values - convert to billions
+      // Full 128-bit value: (high * 2^64 + low) / 1e9
+      double gap128 = (double)minGap.i64[1] * 18446744073709551616.0 + (double)minGap.i64[0];
+      double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
+      double currentGap = gap128 / 1000000000.0;
+      double lowest = lowestGap128 / 1000000000.0;
 
-      printf("\r[Client %d][Kang 2^%.2f][DP Count 2^%.2f/2^%.2f][Dead %.0f][T:%.1f%%/W:%.1f%%][Gap:%.1f][L.Gap:%.1f][%s][%s]  ",
+      printf("\r[Client %d][Kang 2^%.2f][DP Count 2^%.2f/2^%.2f][Dead %.0f][T/W:%.3f][Gap:%.1f][L.Gap:%.1f][%s][%s]  ",
         connectedClient,
         log2((double)totalRW),
         log2((double)hashTable.GetNbItem()),
         log2(expectedNbOp / pow(2.0,dpSize)),
         (double)collisionInSameHerd,
-        tamePercent, wildPercent,
+        twRatio,
         currentGap, lowest,
         GetTimeStr(t1 - startTime).c_str(),
         hashTable.GetSizeInfo().c_str()
@@ -315,33 +315,33 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
     // Display stats
     if(isAlive(params) && !endOfSearch) {
-      // Calculate tame/wild percentages
-      uint64_t totalDP = tameCount + wildCount;
-      double tamePercent = (totalDP > 0) ? (100.0 * tameCount / totalDP) : 0.0;
-      double wildPercent = (totalDP > 0) ? (100.0 * wildCount / totalDP) : 0.0;
+      // Calculate tame/wild ratio (1.000 = 50/50)
+      double twRatio = (wildCount > 0) ? ((double)tameCount / (double)wildCount) : 0.0;
 
-      // Calculate compact gap values (divide by 1 billion)
-      // Properly convert 128-bit values to double: high * 2^64 + low
-      double currentGap = ((double)minGap.i64[1] * 18446744073709551616.0 + (double)minGap.i64[0]) / 1000000000.0;
-      double lowest = ((double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0]) / 1000000000.0;
+      // Calculate compact gap values - convert to billions
+      // Full 128-bit value: (high * 2^64 + low) / 1e9
+      double gap128 = (double)minGap.i64[1] * 18446744073709551616.0 + (double)minGap.i64[0];
+      double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
+      double currentGap = gap128 / 1000000000.0;
+      double lowest = lowestGap128 / 1000000000.0;
 
       if(clientMode) {
-        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][T:%.1f%%/W:%.1f%%][Gap:%.1f][L.Gap:%.1f][%s][Server %6s]  ",
+        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][T/W:%.3f][Gap:%.1f][L.Gap:%.1f][%s][Server %6s]  ",
           avgKeyRate / 1000000.0,unit.c_str(),
           avgGpuKeyRate / 1000000.0,unit.c_str(),
           log2((double)count + offsetCount),
-          tamePercent, wildPercent,
+          twRatio,
           currentGap, lowest,
           GetTimeStr(t1 - startTime + offsetTime).c_str(),
           serverStatus.c_str()
           );
       } else {
-        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][Dead %.0f][T:%.1f%%/W:%.1f%%][Gap:%.1f][L.Gap:%.1f][%s (Avg %s)][%s]  ",
+        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][Dead %.0f][T/W:%.3f][Gap:%.1f][L.Gap:%.1f][%s (Avg %s)][%s]  ",
           avgKeyRate / 1000000.0,unit.c_str(),
           avgGpuKeyRate / 1000000.0,unit.c_str(),
           log2((double)count + offsetCount),
           (double)collisionInSameHerd,
-          tamePercent, wildPercent,
+          twRatio,
           currentGap, lowest,
           GetTimeStr(t1 - startTime + offsetTime).c_str(),GetTimeStr(expectedTime).c_str(),
           hashTable.GetSizeInfo().c_str()
