@@ -309,7 +309,7 @@ bool Kangaroo::CollisionCheck(Int* d1,uint32_t type1,Int* d2,uint32_t type2) {
 
 bool Kangaroo::AddToTable(Int *pos,Int *dist,uint32_t kType) {
 
-  int addStatus = hashTable.Add(pos,dist,kType,&minGap);
+  int addStatus = hashTable.Add(pos,dist,kType);
   if(addStatus== ADD_COLLISION)
     return CollisionCheck(&hashTable.kDist,hashTable.kType,dist,kType);
 
@@ -328,7 +328,7 @@ bool Kangaroo::AddToTable(Int *pos,Int *dist,uint32_t kType) {
 
 bool Kangaroo::AddToTable(uint64_t h,int128_t *x,int128_t *d) {
 
-  int addStatus = hashTable.Add(h,x,d,&minGap);
+  int addStatus = hashTable.Add(h,x,d);
   if(addStatus== ADD_COLLISION) {
 
     Int dist;
@@ -688,6 +688,16 @@ void *_SolveKeyGPU(void *lpParam) {
   return 0;
 }
 
+#ifdef WIN64
+DWORD WINAPI _ScanGapsThread(LPVOID lpParam) {
+#else
+void *_ScanGapsThread(void *lpParam) {
+#endif
+  TH_PARAM *p = (TH_PARAM *)lpParam;
+  p->obj->ScanGapsThread(p);
+  return 0;
+}
+
 // ----------------------------------------------------------------------------
 
 void Kangaroo::CreateHerd(int nbKangaroo,Int *px,Int *py,Int *d,int firstType,bool lock) {
@@ -950,8 +960,8 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
 
 #endif
 
-  uint64_t totalThread = (uint64_t)nbCPUThread + (uint64_t)nbGPUThread;
-  if(totalThread == 0) {
+  uint64_t totalThread = (uint64_t)nbCPUThread + (uint64_t)nbGPUThread + 1; // +1 for gap scan thread
+  if(totalThread == 1) { // Only gap scan thread
     ::printf("No CPU or GPU thread, exiting.\n");
     ::exit(0);
   }
@@ -1075,11 +1085,16 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
 
 #endif
 
+      // Launch gap scan thread
+      int gapThreadId = nbCPUThread + nbGPUThread;
+      params[gapThreadId].threadId = 0xFF;
+      params[gapThreadId].isRunning = true;
+      thHandles[gapThreadId] = LaunchThread(_ScanGapsThread,params + gapThreadId);
 
       // Wait for end
       Process(params,"MK/s");
-      JoinThreads(thHandles,nbCPUThread + nbGPUThread);
-      FreeHandles(thHandles,nbCPUThread + nbGPUThread);
+      JoinThreads(thHandles,nbCPUThread + nbGPUThread + 1);
+      FreeHandles(thHandles,nbCPUThread + nbGPUThread + 1);
       hashTable.Reset();
 
 #ifdef STATS
