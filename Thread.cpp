@@ -218,8 +218,9 @@ void Kangaroo::ProcessServer() {
       double wildPercent = (totalDP > 0) ? (100.0 * wildCount / totalDP) : 0.0;
 
       // Calculate compact gap values (divide by 1 billion)
-      double currentGap = (double)minGap.i64[0] / 1000000000.0;
-      double lowest = (double)lowestGap.i64[0] / 1000000000.0;
+      // Properly convert 128-bit values to double: high * 2^64 + low
+      double currentGap = ((double)minGap.i64[1] * 18446744073709551616.0 + (double)minGap.i64[0]) / 1000000000.0;
+      double lowest = ((double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0]) / 1000000000.0;
 
       printf("\r[Client %d][Kang 2^%.2f][DP Count 2^%.2f/2^%.2f][Dead %.0f][T:%.1f%%/W:%.1f%%][Gap:%.1f][L.Gap:%.1f][%s][%s]  ",
         connectedClient,
@@ -320,8 +321,9 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       double wildPercent = (totalDP > 0) ? (100.0 * wildCount / totalDP) : 0.0;
 
       // Calculate compact gap values (divide by 1 billion)
-      double currentGap = (double)minGap.i64[0] / 1000000000.0;
-      double lowest = (double)lowestGap.i64[0] / 1000000000.0;
+      // Properly convert 128-bit values to double: high * 2^64 + low
+      double currentGap = ((double)minGap.i64[1] * 18446744073709551616.0 + (double)minGap.i64[0]) / 1000000000.0;
+      double lowest = ((double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0]) / 1000000000.0;
 
       if(clientMode) {
         printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][T:%.1f%%/W:%.1f%%][Gap:%.1f][L.Gap:%.1f][%s][Server %6s]  ",
