@@ -16,8 +16,43 @@
 */
 
 #include "Int.h"
-#include <emmintrin.h>
 #include <string.h>
+#include <stdint.h>
+
+// Detect SSE2 support
+#if defined(__x86_64__) || defined(_M_X64) || (defined(__i386__) || defined(_M_IX86))
+  #define HAS_SSE2 1
+  #include <emmintrin.h>
+#else
+  // FakeM128i fallback for non-SSE2 platforms (ARM64, etc.)
+  typedef struct {
+    int64_t i64[2];
+  } FakeM128i;
+
+  #define __m128i FakeM128i
+
+  // Helper functions for FakeM128i operations
+  static inline FakeM128i _mm_slli_epi64(FakeM128i a, int count) {
+    FakeM128i result;
+    result.i64[0] = a.i64[0] << count;
+    result.i64[1] = a.i64[1] << count;
+    return result;
+  }
+
+  static inline FakeM128i _mm_add_epi64(FakeM128i a, FakeM128i b) {
+    FakeM128i result;
+    result.i64[0] = a.i64[0] + b.i64[0];
+    result.i64[1] = a.i64[1] + b.i64[1];
+    return result;
+  }
+
+  static inline FakeM128i _mm_sub_epi64(FakeM128i a, FakeM128i b) {
+    FakeM128i result;
+    result.i64[0] = a.i64[0] - b.i64[0];
+    result.i64[1] = a.i64[1] - b.i64[1];
+    return result;
+  }
+#endif
 
 #define MAX(x,y) (((x)>(y))?(x):(y))
 #define MIN(x,y) (((x)<(y))?(x):(y))
@@ -225,16 +260,23 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
   __m128i _v;
   __m128i _t;
 
-#ifdef WIN64
-  _u.m128i_u64[0] = 1;
-  _u.m128i_u64[1] = 0;
-  _v.m128i_u64[0] = 0;
-  _v.m128i_u64[1] = 1;
+#ifdef HAS_SSE2
+  #ifdef WIN64
+    _u.m128i_u64[0] = 1;
+    _u.m128i_u64[1] = 0;
+    _v.m128i_u64[0] = 0;
+    _v.m128i_u64[1] = 1;
+  #else
+    ((int64_t *)&_u)[0] = 1;
+    ((int64_t *)&_u)[1] = 0;
+    ((int64_t *)&_v)[0] = 0;
+    ((int64_t *)&_v)[1] = 1;
+  #endif
 #else
-  ((int64_t *)&_u)[0] = 1;
-  ((int64_t *)&_u)[1] = 0;
-  ((int64_t *)&_v)[0] = 0;
-  ((int64_t *)&_v)[1] = 1;
+  _u.i64[0] = 1;
+  _u.i64[1] = 0;
+  _v.i64[0] = 0;
+  _v.i64[1] = 1;
 #endif
 
   while(true) {
@@ -262,16 +304,23 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
 
   }
 
-#ifdef WIN64
-  *uu = _u.m128i_u64[0];
-  *uv = _u.m128i_u64[1];
-  *vu = _v.m128i_u64[0];
-  *vv = _v.m128i_u64[1];
+#ifdef HAS_SSE2
+  #ifdef WIN64
+    *uu = _u.m128i_u64[0];
+    *uv = _u.m128i_u64[1];
+    *vu = _v.m128i_u64[0];
+    *vv = _v.m128i_u64[1];
+  #else
+    *uu = ((int64_t *)&_u)[0];
+    *uv = ((int64_t *)&_u)[1];
+    *vu = ((int64_t *)&_v)[0];
+    *vv = ((int64_t *)&_v)[1];
+  #endif
 #else
-  *uu = ((int64_t *)&_u)[0];
-  *uv = ((int64_t *)&_u)[1];
-  *vu = ((int64_t *)&_v)[0];
-  *vv = ((int64_t *)&_v)[1];
+  *uu = _u.i64[0];
+  *uv = _u.i64[1];
+  *vu = _v.i64[0];
+  *vv = _v.i64[1];
 #endif
 
 #endif

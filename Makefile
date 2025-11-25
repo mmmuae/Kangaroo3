@@ -44,21 +44,35 @@ CUDA       = /usr/local/cuda
 CXXCUDA    = /usr/bin/g++
 NVCC       = $(CUDA)/bin/nvcc
 
+# Detect host architecture
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),x86_64)
+  ARCH_FLAGS = -mssse3
+else ifeq ($(UNAME_M),amd64)
+  ARCH_FLAGS = -mssse3
+else ifeq ($(UNAME_M),arm64)
+  ARCH_FLAGS =
+else ifeq ($(UNAME_M),aarch64)
+  ARCH_FLAGS =
+else
+  ARCH_FLAGS =
+endif
+
 ifdef gpu
 
 ifdef debug
-CXXFLAGS   = -DWITHGPU -m64  -mssse3 -Wno-unused-result -Wno-write-strings -g -I. -I$(CUDA)/include
+CXXFLAGS   = -DWITHGPU -m64 $(ARCH_FLAGS) -Wno-unused-result -Wno-write-strings -g -I. -I$(CUDA)/include
 else
-CXXFLAGS   = -DWITHGPU -m64 -mssse3 -Wno-unused-result -Wno-write-strings -O2 -I. -I$(CUDA)/include
+CXXFLAGS   = -DWITHGPU -m64 $(ARCH_FLAGS) -Wno-unused-result -Wno-write-strings -O2 -I. -I$(CUDA)/include
 endif
 LFLAGS     = -lpthread -L$(CUDA)/lib64 -lcudart
 
 else
 
 ifdef debug
-CXXFLAGS   = -m64 -mssse3 -Wno-unused-result -Wno-write-strings -g -I. -I$(CUDA)/include
+CXXFLAGS   = -m64 $(ARCH_FLAGS) -Wno-unused-result -Wno-write-strings -g -I. -I$(CUDA)/include
 else
-CXXFLAGS   =  -m64 -mssse3 -Wno-unused-result -Wno-write-strings -O2 -I. -I$(CUDA)/include
+CXXFLAGS   = -m64 $(ARCH_FLAGS) -Wno-unused-result -Wno-write-strings -O2 -I. -I$(CUDA)/include
 endif
 LFLAGS     = -lpthread
 

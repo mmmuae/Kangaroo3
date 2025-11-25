@@ -26,6 +26,9 @@
 #ifndef WIN64
 #include <pthread.h>
 #include <sys/stat.h>
+#ifdef __linux__
+#include <fcntl.h>
+#endif
 #endif
 
 using namespace std;
@@ -590,7 +593,9 @@ void Kangaroo::WorkInfo(std::string &fName) {
 
 #ifndef WIN64
   int fd = fileno(f1);
+  #if defined(__linux__) && defined(POSIX_FADV_RANDOM)
   posix_fadvise(fd,0,0,POSIX_FADV_RANDOM|POSIX_FADV_NOREUSE);
+  #endif
 #endif
 
   uint32_t dp1;
