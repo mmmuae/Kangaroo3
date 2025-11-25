@@ -63,6 +63,8 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->collisionInSameHerd = 0;
   this->tameCount = 0;
   this->wildCount = 0;
+  this->lastGap.i64[0] = 0;
+  this->lastGap.i64[1] = 0;
   this->minGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
   this->minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
   this->lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
@@ -1061,6 +1063,8 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
       collisionInSameHerd = 0;
       tameCount = 0;
       wildCount = 0;
+      lastGap.i64[0] = 0;
+      lastGap.i64[1] = 0;
       minGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
       minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
       lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;

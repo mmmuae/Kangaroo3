@@ -21,6 +21,7 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <algorithm>
+#include <vector>
 #ifndef WIN64
 #include <pthread.h>
 #endif
@@ -217,7 +218,7 @@ void Kangaroo::ProcessServer() {
 
       // Calculate compact gap values - convert to billions
       // Full 128-bit value: (high * 2^64 + low) / 1e9
-      double gap128 = (double)minGap.i64[1] * 18446744073709551616.0 + (double)minGap.i64[0];
+      double gap128 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
       double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
       double currentGap = gap128 / 1000000000.0;
       double lowest = lowestGap128 / 1000000000.0;
@@ -320,7 +321,7 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
       // Calculate compact gap values - convert to billions
       // Full 128-bit value: (high * 2^64 + low) / 1e9
-      double gap128 = (double)minGap.i64[1] * 18446744073709551616.0 + (double)minGap.i64[0];
+      double gap128 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
       double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
       double currentGap = gap128 / 1000000000.0;
       double lowest = lowestGap128 / 1000000000.0;
@@ -416,43 +417,57 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
     localMinGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
     localMinGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
 
+    int128_t localLastGap = lastGap;
+    bool gapFound = false;
+
+    std::vector<int128_t> distances;
+    std::vector<uint32_t> herdTypes;
+
     // Scan through all hash buckets
     for(uint32_t h = 0; h < HASH_SIZE && !endOfSearch; h++) {
+
+      distances.clear();
+      herdTypes.clear();
 
       LOCK(ghMutex);
       uint32_t nbItem = hashTable.E[h].nbItem;
 
       if(nbItem > 1) {
-        // Walk through entries in this bucket
-        for(uint32_t i = 0; i < nbItem - 1 && !endOfSearch; i++) {
-          ENTRY* entry1 = hashTable.E[h].items[i];
-          uint32_t type1 = (entry1->d.i64[1] & 0x4000000000000000ULL) != 0;
+        distances.reserve(nbItem);
+        herdTypes.reserve(nbItem);
 
-          // Check remaining entries for opposite herd
-          for(uint32_t j = i + 1; j < nbItem && !endOfSearch; j++) {
-            ENTRY* entry2 = hashTable.E[h].items[j];
-            uint32_t type2 = (entry2->d.i64[1] & 0x4000000000000000ULL) != 0;
+        for(uint32_t i = 0; i < nbItem; i++) {
+          ENTRY* entry = hashTable.E[h].items[i];
+          uint32_t type = (entry->d.i64[1] & 0x4000000000000000ULL) != 0;
+          int128_t dist = entry->d;
+          dist.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
 
-            // Only calculate gap for opposite herds
-            if(type1 != type2) {
-              // Extract raw distances (bits 0-125)
-              int128_t dist1 = entry1->d;
-              int128_t dist2 = entry2->d;
-              dist1.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
-              dist2.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
+          distances.push_back(dist);
+          herdTypes.push_back(type);
+        }
+      }
+      UNLOCK(ghMutex);
 
+      uint32_t nbStored = (uint32_t)distances.size();
+      if(nbStored > 1 && !endOfSearch) {
+        for(uint32_t i = 0; i < nbStored - 1 && !endOfSearch; i++) {
+          for(uint32_t j = i + 1; j < nbStored && !endOfSearch; j++) {
+            if(herdTypes[i] != herdTypes[j]) {
               // Calculate absolute difference
               int128_t gap;
-              if(dist1.i64[1] > dist2.i64[1] ||
-                 (dist1.i64[1] == dist2.i64[1] && dist1.i64[0] > dist2.i64[0])) {
-                gap.i64[1] = dist1.i64[1] - dist2.i64[1];
-                gap.i64[0] = dist1.i64[0] - dist2.i64[0];
-                if(dist1.i64[0] < dist2.i64[0]) gap.i64[1]--;
+              if(distances[i].i64[1] > distances[j].i64[1] ||
+                 (distances[i].i64[1] == distances[j].i64[1] && distances[i].i64[0] > distances[j].i64[0])) {
+                gap.i64[1] = distances[i].i64[1] - distances[j].i64[1];
+                gap.i64[0] = distances[i].i64[0] - distances[j].i64[0];
+                if(distances[i].i64[0] < distances[j].i64[0]) gap.i64[1]--;
               } else {
-                gap.i64[1] = dist2.i64[1] - dist1.i64[1];
-                gap.i64[0] = dist2.i64[0] - dist1.i64[0];
-                if(dist2.i64[0] < dist1.i64[0]) gap.i64[1]--;
+                gap.i64[1] = distances[j].i64[1] - distances[i].i64[1];
+                gap.i64[0] = distances[j].i64[0] - distances[i].i64[0];
+                if(distances[j].i64[0] < distances[i].i64[0]) gap.i64[1]--;
               }
+
+              gapFound = true;
+              localLastGap = gap;
 
               // Update local minimum
               if(gap.i64[1] < localMinGap.i64[1] ||
@@ -464,22 +479,25 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
           }
         }
       }
+    }
+
+    // Update global minimum gap, lowest gap, and last seen gap
+    if(gapFound) {
+      LOCK(ghMutex);
+      lastGap.i64[0] = localLastGap.i64[0];
+      lastGap.i64[1] = localLastGap.i64[1];
+
+      minGap.i64[0] = localMinGap.i64[0];
+      minGap.i64[1] = localMinGap.i64[1];
+
+      // Update lowestGap only if this is a new all-time minimum
+      if(localMinGap.i64[1] < lowestGap.i64[1] ||
+         (localMinGap.i64[1] == lowestGap.i64[1] && localMinGap.i64[0] < lowestGap.i64[0])) {
+        lowestGap.i64[0] = localMinGap.i64[0];
+        lowestGap.i64[1] = localMinGap.i64[1];
+      }
       UNLOCK(ghMutex);
     }
-
-    // Update global minimum gap and lowest gap
-    LOCK(ghMutex);
-    // Always update current minGap
-    minGap.i64[0] = localMinGap.i64[0];
-    minGap.i64[1] = localMinGap.i64[1];
-
-    // Update lowestGap only if this is a new all-time minimum
-    if(localMinGap.i64[1] < lowestGap.i64[1] ||
-       (localMinGap.i64[1] == lowestGap.i64[1] && localMinGap.i64[0] < lowestGap.i64[0])) {
-      lowestGap.i64[0] = localMinGap.i64[0];
-      lowestGap.i64[1] = localMinGap.i64[1];
-    }
-    UNLOCK(ghMutex);
 
   }
 
