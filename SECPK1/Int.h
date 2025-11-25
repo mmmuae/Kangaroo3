@@ -213,7 +213,17 @@ private:
 
 #ifndef WIN64
 
+// Architecture detection
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+  #define ARCH_X86 1
+#elif defined(__aarch64__) || defined(_M_ARM64)
+  #define ARCH_ARM64 1
+#else
+  #define ARCH_GENERIC 1
+#endif
+
 // Missing intrinsics
+#ifdef ARCH_X86
 static uint64_t inline _umul128(uint64_t a, uint64_t b, uint64_t *h) {
   uint64_t rhi;
   uint64_t rlo;
@@ -227,7 +237,7 @@ static int64_t inline _mul128(int64_t a, int64_t b, int64_t *h) {
   uint64_t rlo;
   __asm__( "imulq  %[b];" :"=d"(rhi),"=a"(rlo) :"1"(a),[b]"rm"(b));
   *h = rhi;
-  return rlo;  
+  return rlo;
 }
 
 static uint64_t inline _udiv128(uint64_t hi, uint64_t lo, uint64_t d,uint64_t *r) {
@@ -235,7 +245,7 @@ static uint64_t inline _udiv128(uint64_t hi, uint64_t lo, uint64_t d,uint64_t *r
   uint64_t _r;
   __asm__( "divq  %[d];" :"=d"(_r),"=a"(q) :"d"(hi),"a"(lo),[d]"rm"(d));
   *r = _r;
-  return q;  
+  return q;
 }
 
 static uint64_t inline __rdtsc() {
@@ -244,13 +254,75 @@ static uint64_t inline __rdtsc() {
   __asm__( "rdtsc;" :"=d"(h),"=a"(l));
   return (uint64_t)h << 32 | (uint64_t)l;
 }
+#else
+// Portable implementations for ARM64 and other architectures
+static uint64_t inline _umul128(uint64_t a, uint64_t b, uint64_t *h) {
+  __uint128_t r = (__uint128_t)a * b;
+  *h = (uint64_t)(r >> 64);
+  return (uint64_t)r;
+}
+
+static int64_t inline _mul128(int64_t a, int64_t b, int64_t *h) {
+  __int128_t r = (__int128_t)a * b;
+  *h = (int64_t)(r >> 64);
+  return (int64_t)r;
+}
+
+static uint64_t inline _udiv128(uint64_t hi, uint64_t lo, uint64_t d, uint64_t *r) {
+  __uint128_t dividend = ((__uint128_t)hi << 64) | lo;
+  *r = (uint64_t)(dividend % d);
+  return (uint64_t)(dividend / d);
+}
+
+#ifdef __APPLE__
+#include <mach/mach_time.h>
+static uint64_t inline __rdtsc() {
+  return mach_absolute_time();
+}
+#else
+static uint64_t inline __rdtsc() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+}
+#endif
+#endif
 
 #define __shiftright128(a,b,n) ((a)>>(n))|((b)<<(64-(n)))
 #define __shiftleft128(a,b,n) ((b)<<(n))|((a)>>(64-(n)))
 
-
+// Portable carry/borrow operations
+#ifdef ARCH_X86
 #define _subborrow_u64(a,b,c,d) __builtin_ia32_sbb_u64(a,b,c,(long long unsigned int*)d);
 #define _addcarry_u64(a,b,c,d) __builtin_ia32_addcarryx_u64(a,b,c,(long long unsigned int*)d);
+#else
+// Use Clang's portable carry/borrow built-ins on non-x86 platforms
+#if defined(__clang__) && __has_builtin(__builtin_addcll) && __has_builtin(__builtin_subcll)
+static inline unsigned char _addcarry_u64(unsigned char c_in, uint64_t a, uint64_t b, uint64_t *out) {
+  unsigned long long carry_out;
+  *out = __builtin_addcll(a, b, c_in, &carry_out);
+  return (unsigned char)carry_out;
+}
+static inline unsigned char _subborrow_u64(unsigned char b_in, uint64_t a, uint64_t b, uint64_t *out) {
+  unsigned long long borrow_out;
+  *out = __builtin_subcll(a, b, b_in, &borrow_out);
+  return (unsigned char)borrow_out;
+}
+#else
+// Fallback to __uint128_t arithmetic
+static inline unsigned char _addcarry_u64(unsigned char c_in, uint64_t a, uint64_t b, uint64_t *out) {
+  __uint128_t sum = (__uint128_t)a + b + c_in;
+  *out = (uint64_t)sum;
+  return (unsigned char)(sum >> 64);
+}
+static inline unsigned char _subborrow_u64(unsigned char b_in, uint64_t a, uint64_t b, uint64_t *out) {
+  __uint128_t diff = (__uint128_t)a - b - b_in;
+  *out = (uint64_t)diff;
+  return (unsigned char)(diff >> 127); // Check sign bit
+}
+#endif
+#endif
+
 #define _byteswap_uint64 __builtin_bswap64
 #define LZC(x) __builtin_clzll(x)
 #define TZC(x) __builtin_ctzll(x)
