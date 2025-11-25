@@ -211,16 +211,24 @@ void Kangaroo::ProcessServer() {
 
     t1 = Timer::get_tick();
 
-    if(!endOfSearch)
-      printf("\r[Client %d][Kang 2^%.2f][DP Count 2^%.2f/2^%.2f][Dead %.0f][%s][%s]  ",
+    if(!endOfSearch) {
+      // Calculate tame/wild percentages
+      uint64_t totalDP = tameCount + wildCount;
+      double tamePercent = (totalDP > 0) ? (100.0 * tameCount / totalDP) : 0.0;
+      double wildPercent = (totalDP > 0) ? (100.0 * wildCount / totalDP) : 0.0;
+
+      printf("\r[Client %d][Kang 2^%.2f][DP Count 2^%.2f/2^%.2f][Dead %.0f][T:%.1f%%/W:%.1f%%][Gap:%llu][%s][%s]  ",
         connectedClient,
         log2((double)totalRW),
         log2((double)hashTable.GetNbItem()),
         log2(expectedNbOp / pow(2.0,dpSize)),
         (double)collisionInSameHerd,
+        tamePercent, wildPercent,
+        (unsigned long long)minGap.i64[0],
         GetTimeStr(t1 - startTime).c_str(),
         hashTable.GetSizeInfo().c_str()
         );
+    }
 
     if(workFile.length() > 0 && !endOfSearch) {
       if((t1 - lastSave) > saveWorkPeriod) {
@@ -302,20 +310,29 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
     // Display stats
     if(isAlive(params) && !endOfSearch) {
+      // Calculate tame/wild percentages
+      uint64_t totalDP = tameCount + wildCount;
+      double tamePercent = (totalDP > 0) ? (100.0 * tameCount / totalDP) : 0.0;
+      double wildPercent = (totalDP > 0) ? (100.0 * wildCount / totalDP) : 0.0;
+
       if(clientMode) {
-        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][%s][Server %6s]  ",
+        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][T:%.1f%%/W:%.1f%%][Gap:%llu][%s][Server %6s]  ",
           avgKeyRate / 1000000.0,unit.c_str(),
           avgGpuKeyRate / 1000000.0,unit.c_str(),
           log2((double)count + offsetCount),
+          tamePercent, wildPercent,
+          (unsigned long long)minGap.i64[0],
           GetTimeStr(t1 - startTime + offsetTime).c_str(),
           serverStatus.c_str()
           );
       } else {
-        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][Dead %.0f][%s (Avg %s)][%s]  ",
+        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][Dead %.0f][T:%.1f%%/W:%.1f%%][Gap:%llu][%s (Avg %s)][%s]  ",
           avgKeyRate / 1000000.0,unit.c_str(),
           avgGpuKeyRate / 1000000.0,unit.c_str(),
           log2((double)count + offsetCount),
           (double)collisionInSameHerd,
+          tamePercent, wildPercent,
+          (unsigned long long)minGap.i64[0],
           GetTimeStr(t1 - startTime + offsetTime).c_str(),GetTimeStr(expectedTime).c_str(),
           hashTable.GetSizeInfo().c_str()
         );

@@ -218,14 +218,14 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
 
 }
 
-int HashTable::Add(Int *x,Int *d,uint32_t type) {
+int HashTable::Add(Int *x,Int *d,uint32_t type,int128_t* minGap) {
 
   int128_t X;
   int128_t D;
   uint64_t h;
   Convert(x,d,type,&h,&X,&D);
   ENTRY* e = CreateEntry(&X,&D);
-  return Add(h,e);
+  return Add(h,e,minGap);
 
 }
 
@@ -239,10 +239,10 @@ void HashTable::ReAllocate(uint64_t h,uint32_t add) {
 
 }
 
-int HashTable::Add(uint64_t h,int128_t *x,int128_t *d) {
+int HashTable::Add(uint64_t h,int128_t *x,int128_t *d,int128_t* minGap) {
 
   ENTRY *e = CreateEntry(x,d);
-  return Add(h,e);
+  return Add(h,e,minGap);
 
 }
 
@@ -259,7 +259,7 @@ void HashTable::CalcDistAndType(int128_t d,Int* kDist,uint32_t* kType) {
 
 }
 
-int HashTable::Add(uint64_t h,ENTRY* e) {
+int HashTable::Add(uint64_t h,ENTRY* e,int128_t* minGap) {
 
   if(E[h].maxItem == 0) {
     E[h].maxItem = 16;
@@ -298,6 +298,48 @@ int HashTable::Add(uint64_t h,ENTRY* e) {
 
     } else {
       st = mi + 1;
+    }
+  }
+
+  // Track minimum gap between opposite-herd entries if minGap pointer provided
+  if(minGap != NULL && E[h].nbItem > 0) {
+    // Extract type of new entry (bit 126)
+    uint32_t newType = (e->d.i64[1] & 0x4000000000000000ULL) != 0;
+
+    // Walk through all entries in this bucket
+    for(uint32_t i = 0; i < E[h].nbItem; i++) {
+      ENTRY* existing = GET(h,i);
+      uint32_t existingType = (existing->d.i64[1] & 0x4000000000000000ULL) != 0;
+
+      // Check if opposite herd
+      if(newType != existingType) {
+        // Calculate absolute distance gap
+        // Extract raw distances (bits 0-125)
+        int128_t newDist = e->d;
+        int128_t existingDist = existing->d;
+        newDist.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
+        existingDist.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
+
+        // Calculate absolute difference
+        int128_t gap;
+        if(newDist.i64[1] > existingDist.i64[1] ||
+           (newDist.i64[1] == existingDist.i64[1] && newDist.i64[0] > existingDist.i64[0])) {
+          gap.i64[1] = newDist.i64[1] - existingDist.i64[1];
+          gap.i64[0] = newDist.i64[0] - existingDist.i64[0];
+          if(newDist.i64[0] < existingDist.i64[0]) gap.i64[1]--;
+        } else {
+          gap.i64[1] = existingDist.i64[1] - newDist.i64[1];
+          gap.i64[0] = existingDist.i64[0] - newDist.i64[0];
+          if(existingDist.i64[0] < newDist.i64[0]) gap.i64[1]--;
+        }
+
+        // Update minGap if this gap is smaller
+        if(gap.i64[1] < minGap->i64[1] ||
+           (gap.i64[1] == minGap->i64[1] && gap.i64[0] < minGap->i64[0])) {
+          minGap->i64[0] = gap.i64[0];
+          minGap->i64[1] = gap.i64[1];
+        }
+      }
     }
   }
 

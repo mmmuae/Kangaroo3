@@ -247,6 +247,9 @@ private:
   uint32_t dpSize;
   int32_t initDPSize;
   uint64_t collisionInSameHerd;
+  uint64_t tameCount;
+  uint64_t wildCount;
+  int128_t minGap;
   std::vector<Point> keysToSearch;
   Point keyToSearch;
   Point keyToSearchNeg;

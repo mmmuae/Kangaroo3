@@ -61,6 +61,10 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->connectedClient = 0;
   this->totalRW = 0;
   this->collisionInSameHerd = 0;
+  this->tameCount = 0;
+  this->wildCount = 0;
+  this->minGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
+  this->minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
   this->keyIdx = 0;
   this->splitWorkfile = splitWorkfile;
   this->pid = Timer::getPID();
@@ -305,9 +309,18 @@ bool Kangaroo::CollisionCheck(Int* d1,uint32_t type1,Int* d2,uint32_t type2) {
 
 bool Kangaroo::AddToTable(Int *pos,Int *dist,uint32_t kType) {
 
-  int addStatus = hashTable.Add(pos,dist,kType);
+  int addStatus = hashTable.Add(pos,dist,kType,&minGap);
   if(addStatus== ADD_COLLISION)
     return CollisionCheck(&hashTable.kDist,hashTable.kType,dist,kType);
+
+  // Track tame/wild DP counts
+  if(addStatus == ADD_OK) {
+    if(kType == 0) {
+      tameCount++;
+    } else {
+      wildCount++;
+    }
+  }
 
   return addStatus == ADD_OK;
 
@@ -315,7 +328,7 @@ bool Kangaroo::AddToTable(Int *pos,Int *dist,uint32_t kType) {
 
 bool Kangaroo::AddToTable(uint64_t h,int128_t *x,int128_t *d) {
 
-  int addStatus = hashTable.Add(h,x,d);
+  int addStatus = hashTable.Add(h,x,d,&minGap);
   if(addStatus== ADD_COLLISION) {
 
     Int dist;
@@ -323,6 +336,16 @@ bool Kangaroo::AddToTable(uint64_t h,int128_t *x,int128_t *d) {
     HashTable::CalcDistAndType(*d,&dist,&kType);
     return CollisionCheck(&hashTable.kDist,hashTable.kType,&dist,kType);
 
+  }
+
+  // Track tame/wild DP counts
+  if(addStatus == ADD_OK) {
+    uint32_t kType = (d->i64[1] & 0x4000000000000000ULL) != 0;
+    if(kType == 0) {
+      tameCount++;
+    } else {
+      wildCount++;
+    }
   }
 
   return addStatus == ADD_OK;
@@ -1024,6 +1047,10 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
 
       endOfSearch = false;
       collisionInSameHerd = 0;
+      tameCount = 0;
+      wildCount = 0;
+      minGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
+      minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
 
       // Reset conters
       memset(counters,0,sizeof(counters));
