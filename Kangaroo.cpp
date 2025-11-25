@@ -65,6 +65,8 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->wildCount = 0;
   this->minGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
   this->minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+  this->lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
+  this->lowestGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
   this->keyIdx = 0;
   this->splitWorkfile = splitWorkfile;
   this->pid = Timer::getPID();
@@ -1061,6 +1063,8 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
       wildCount = 0;
       minGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
       minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+      lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
+      lowestGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
 
       // Reset conters
       memset(counters,0,sizeof(counters));
