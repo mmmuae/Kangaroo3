@@ -1170,6 +1170,7 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
       for(int i = 0; i < nbCPUThread; i++) {
         params[i].threadId = i;
         params[i].isRunning = true;
+        params[i].nbKangaroo = CPU_GRP_SIZE;  // Set kangaroo count for respawning
         thHandles[i] = LaunchThread(_SolveKeyCPU,params + i);
       }
 
