@@ -621,6 +621,7 @@ void Kangaroo::SolveKeyGPU(TH_PARAM *ph) {
   GPUEngine *gpu;
 
   gpu = new GPUEngine(ph->gridSizeX,ph->gridSizeY,ph->gpuId,65536 * 2);
+  ph->gpuEngine = (void*)gpu;  // Store for later DP mask updates
 
   if(keyIdx == 0)
     ::printf("GPU: %s (%.1f MB used)\n",gpu->deviceName.c_str(),gpu->GetMemory() / 1048576.0);
@@ -731,6 +732,7 @@ void Kangaroo::SolveKeyGPU(TH_PARAM *ph) {
   safe_delete_array(ph->px);
   safe_delete_array(ph->py);
   safe_delete_array(ph->distance);
+  ph->gpuEngine = nullptr;  // Clear pointer before deletion
   delete gpu;
 
 #else
