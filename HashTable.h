@@ -46,12 +46,13 @@ typedef union int128_s int128_t;
 
 #define safe_free(x) if(x) {free(x);x=NULL;}
 
-// We store only 128 (+18) bit a the x value which give a probabilty a wrong collision after 2^73 entries
+// We store the full x and d values to support ranges up to 256 bits
 
 typedef struct {
 
-  int128_t  x;    // Poisition of kangaroo (128bit LSB)
-  int128_t  d;    // Travelled distance (b127=sign b126=kangaroo type, b125..b0 distance
+  int128_t  x;    // Position of kangaroo (128bit LSB for hash table efficiency)
+  Int       d;    // Travelled distance (full 256-bit support)
+  uint8_t   type; // Kangaroo type: 0=TAME, 1=WILD
 
 } ENTRY;
 
@@ -88,14 +89,14 @@ public:
   Int      kDist;
   uint32_t kType;
 
-  static void Convert(Int *x,Int *d,uint32_t type,uint64_t *h,int128_t *X,int128_t *D);
+  static void Convert(Int *x,uint64_t *h,int128_t *X);  // Simplified for 256-bit support
   static int MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t *nbDP,uint32_t* duplicate,
                     Int* d1,uint32_t* k1,Int* d2,uint32_t* k2);
-  static void CalcDistAndType(int128_t d,Int* kDist,uint32_t* kType);
+  static void CalcDistAndType(ENTRY* e,Int* kDist,uint32_t* kType);  // Updated for 256-bit support
 
 private:
 
-  ENTRY *CreateEntry(int128_t *x,int128_t *d);
+  ENTRY *CreateEntry(int128_t *x,Int *d,uint8_t type);  // Updated for 256-bit support
   static int compare(int128_t *i1,int128_t *i2);
   std::string GetStr(int128_t *i);
 
