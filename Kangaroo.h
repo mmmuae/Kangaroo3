@@ -227,6 +227,7 @@ private:
   void CalculateHotspotScores();
   void UpdateTopHotspots();
   uint32_t SelectSpawnBucket(bool isTame);  // Adaptive spawning
+  void RespawnKangaroosToHotspots(double respawnPercentage, TH_PARAM *threads, int nbThread);
   void GetPhaseInfo(char *buffer, size_t bufSize);
   void ResetPhaseStatistics();
   double GetPhaseProgress();

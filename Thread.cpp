@@ -673,6 +673,70 @@ uint32_t Kangaroo::SelectSpawnBucket(bool isTame) {
   }
 }
 
+// Respawn kangaroos to hotspot regions (ADAPTIVE RESEEDING - THE BRAIN)
+void Kangaroo::RespawnKangaroosToHotspots(double respawnPercentage, TH_PARAM *threads, int nbThread) {
+
+  if(!gradConfig.enabled || topHotspots.empty()) return;
+
+  ::printf("║  Reseeding %.0f%% of kangaroos to %u hotspots...                          ║\n",
+    respawnPercentage * 100, (uint32_t)topHotspots.size());
+
+  uint64_t totalRespawned = 0;
+
+  // Respawn kangaroos in each CPU thread
+  for(int t = 0; t < nbThread; t++) {
+    if(threads[t].isRunning) {
+      uint64_t nbToRespawn = (uint64_t)(threads[t].nbKangaroo * respawnPercentage);
+
+      for(uint64_t i = 0; i < nbToRespawn; i++) {
+        // Select a random kangaroo to respawn
+        uint64_t kangIdx = rndl() % threads[t].nbKangaroo;
+
+        // Determine if this is TAME or WILD
+        bool isTame = ((kangIdx + threads[t].threadId) % 2) == 0;
+
+        // Select a hotspot bucket to spawn near
+        uint32_t targetBucket = SelectSpawnBucket(isTame);
+
+        // Generate new starting position near the target bucket
+        // The bucket ID gives us a hint about the region of the search space
+        Int newDistance;
+        newDistance.Rand(rangePower);  // Random distance in search range
+
+        // Bias the distance towards the hot zone
+        // We use the bucket ID to add some spatial correlation
+        Int bucketBias;
+        bucketBias.SetInt32((int32_t)targetBucket);
+        bucketBias.ShiftL(rangePower - 20);  // Scale appropriately
+        newDistance.Add(&bucketBias);
+        newDistance.Mod(&rangeWidth);
+
+        // Set the new position
+        threads[t].distance[kangIdx].Set(&newDistance);
+
+        // Calculate the new point position
+        Point newPoint;
+        if(isTame) {
+          // TAME: start + distance
+          newPoint = secp->ComputePublicKey(&newDistance);
+          newPoint = secp->AddDirect(keyToSearch, newPoint);
+        } else {
+          // WILD: distance only
+          newPoint = secp->ComputePublicKey(&newDistance);
+        }
+
+        threads[t].px[kangIdx].Set(&newPoint.x);
+        threads[t].py[kangIdx].Set(&newPoint.y);
+
+        totalRespawned++;
+      }
+    }
+  }
+
+  ::printf("║  ✓ Respawned %llu kangaroos to hotspot regions                             ║\n",
+    (unsigned long long)totalRespawned);
+}
+
 // Get phase information for display
 void Kangaroo::GetPhaseInfo(char *buffer, size_t bufSize) {
 
