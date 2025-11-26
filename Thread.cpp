@@ -445,8 +445,7 @@ bool Kangaroo::UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread) 
 
       // Apply new DP mask for Phase 3 (updates CPU + GPU)
       uint32_t newDPSize = GetCurrentDPSize();
-      int totalThreads = nbThread + nbGPUThread;
-      UpdateDPMask(newDPSize, threads, totalThreads);
+      UpdateDPMask(newDPSize, threads, nbThread);  // nbThread already includes CPU+GPU
 
       ResetPhaseStatistics();
     }
@@ -468,8 +467,7 @@ bool Kangaroo::UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread) 
 
       // Apply new DP mask for Phase 2 (updates CPU + GPU)
       uint32_t newDPSize = GetCurrentDPSize();
-      int totalThreads = nbThread + nbGPUThread;
-      UpdateDPMask(newDPSize, threads, totalThreads);
+      UpdateDPMask(newDPSize, threads, nbThread);  // nbThread already includes CPU+GPU
 
       ResetPhaseStatistics();
     }
@@ -478,8 +476,7 @@ bool Kangaroo::UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread) 
   // Update DP size if phase changed (shouldn't happen, but safety check)
   if(oldPhase != currentPhase && !phaseChanged) {
     uint32_t newDPSize = GetCurrentDPSize();
-    int totalThreads = nbThread + nbGPUThread;
-    UpdateDPMask(newDPSize, threads, totalThreads);
+    UpdateDPMask(newDPSize, threads, nbThread);  // nbThread already includes CPU+GPU
     phaseChanged = true;
   }
 
