@@ -152,7 +152,7 @@ public:
     double scoreDecayRate;       // Score decay per second (0.0-1.0)
     double minHotspotScore;      // Minimum score to consider as hotspot
 
-    GraduatedDPConfig() : enabled(true), manualDuration(0.0),
+    GraduatedDPConfig() : enabled(false), manualDuration(0.0),
                          phase1Duration(0.25), phase2Duration(0.50), phase3Duration(0.25),
                          phase1DPBits(-4), phase2DPBits(0), phase3DPBits(4),
                          hotspotBiasPhase2(0.70), hotspotBiasPhase3(0.95),

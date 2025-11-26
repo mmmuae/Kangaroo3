@@ -377,10 +377,18 @@ void Kangaroo::InitGraduatedDP(double actualKeyRate) {
       (std::string(GetTimeStr(totalDuration)) + " (estimated)").c_str());
   ::printf("╠════════════════════════════════════════════════════════════════════════╣\n");
 
-  // Calculate actual DP bit counts for each phase
+  // Calculate actual DP bit counts for each phase with clamping
   int32_t phase1DP = (int32_t)dpSize + gradConfig.phase1DPBits;
   int32_t phase2DP = (int32_t)dpSize + gradConfig.phase2DPBits;
   int32_t phase3DP = (int32_t)dpSize + gradConfig.phase3DPBits;
+
+  // Clamp to reasonable range [8, 64]
+  if(phase1DP < 8) phase1DP = 8;
+  if(phase1DP > 64) phase1DP = 64;
+  if(phase2DP < 8) phase2DP = 8;
+  if(phase2DP > 64) phase2DP = 64;
+  if(phase3DP < 8) phase3DP = 8;
+  if(phase3DP > 64) phase3DP = 64;
 
   ::printf("║  Phase 1: WIDE NET      - %.0f%% of time - DP: %d bits (FAST)          ║\n",
     gradConfig.phase1Duration * 100, phase1DP);
@@ -402,6 +410,10 @@ void Kangaroo::InitGraduatedDP(double actualKeyRate) {
   ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
   ::printf("\n");
 
+  // Apply Phase 1 DP mask immediately
+  uint32_t phase1DPSize = GetCurrentDPSize();
+  SetDP(phase1DPSize);
+
   ResetPhaseStatistics();
 }
 
@@ -419,13 +431,18 @@ void Kangaroo::UpdatePhase(double currentTime) {
     currentPhase = PHASE_PRECISION;
     if(oldPhase != PHASE_PRECISION) {
       phase2Completed = true;
+
+      // Apply new DP mask for Phase 3
+      uint32_t newDPSize = GetCurrentDPSize();
+      SetDP(newDPSize);
+
       ::printf("\n");
       ::printf("╔════════════════════════════════════════════════════════════════════════╗\n");
       ::printf("║  ⚡ PHASE TRANSITION: FOCUSED → PRECISION                              ║\n");
       ::printf("║  Entering Phase 3: Precision Strike on hottest %u buckets            ║\n",
         (topHotspots.size() < 20) ? (uint32_t)topHotspots.size() : 20);
-      ::printf("║  DP Mask: base%+d (ultra-dense coverage in hot zones)                ║\n",
-        gradConfig.phase3DPBits);
+      ::printf("║  DP Mask: %u bits (ultra-dense coverage in hot zones)                 ║\n",
+        newDPSize);
       ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
       ::printf("\n");
       ResetPhaseStatistics();
@@ -434,15 +451,20 @@ void Kangaroo::UpdatePhase(double currentTime) {
     currentPhase = PHASE_FOCUSED;
     if(oldPhase != PHASE_FOCUSED) {
       phase1Completed = true;
+
+      // Apply new DP mask for Phase 2
+      uint32_t newDPSize = GetCurrentDPSize();
+      SetDP(newDPSize);
+
       ::printf("\n");
       ::printf("╔════════════════════════════════════════════════════════════════════════╗\n");
       ::printf("║  ⚡ PHASE TRANSITION: WIDE NET → FOCUSED                               ║\n");
-      ::printf("║  Phase 1 Complete! Found %llu DPs in %.0f%%   of expected time         ║\n",
+      ::printf("║  Phase 1 Complete! Found %llu DPs in %.0f%% of expected time          ║\n",
         (unsigned long long)phase1DPCount, GetPhaseProgress() * 100);
       ::printf("║  Identified %u hotspots for focused search                            ║\n",
         (uint32_t)topHotspots.size());
-      ::printf("║  DP Mask: base%+d with %.0f%% spawning in hotspots                       ║\n",
-        gradConfig.phase2DPBits, gradConfig.hotspotBiasPhase2 * 100);
+      ::printf("║  DP Mask: %u bits with %.0f%% spawning in hotspots                     ║\n",
+        newDPSize, gradConfig.hotspotBiasPhase2 * 100);
       ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
       ::printf("\n");
       ResetPhaseStatistics();
@@ -482,9 +504,9 @@ uint32_t Kangaroo::GetCurrentDPSize() {
 
   int32_t newSize = (int32_t)initDPSize + adjustment;
 
-  // Clamp to reasonable range [8, 32]
+  // Clamp to reasonable range [8, 64]
   if(newSize < 8) newSize = 8;
-  if(newSize > 32) newSize = 32;
+  if(newSize > 64) newSize = 64;
 
   return (uint32_t)newSize;
 }
