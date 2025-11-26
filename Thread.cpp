@@ -321,7 +321,7 @@ double Kangaroo::CalculateETAForProbability(double targetProb, uint64_t currentD
 // ============================================================================
 
 // Initialize graduated DP strategy
-void Kangaroo::InitGraduatedDP() {
+void Kangaroo::InitGraduatedDP(double actualKeyRate) {
 
   if(!gradConfig.enabled) {
     currentPhase = PHASE_DISABLED;
@@ -341,7 +341,7 @@ void Kangaroo::InitGraduatedDP() {
   // Reserve space for hotspots
   topHotspots.reserve(gradConfig.topHotspotsCount);
 
-  // Calculate phase end times - use manual duration if specified, otherwise estimate
+  // Calculate phase end times - use manual duration if specified, otherwise use actual performance
   double totalDuration;  // in seconds
 
   if(gradConfig.manualDuration > 0.0) {
@@ -349,9 +349,15 @@ void Kangaroo::InitGraduatedDP() {
     totalDuration = gradConfig.manualDuration * 3600.0;  // Convert to seconds
     ::printf("\nUsing MANUAL duration: %.1f hours\n", gradConfig.manualDuration);
   } else {
-    // Estimate based on expected operations (for small puzzles)
-    totalDuration = expectedNbOp / 1e6;  // Rough estimate
-    ::printf("\nUsing ESTIMATED duration: %.2f hours\n", totalDuration / 3600.0);
+    // Use actual measured key rate to calculate expected time
+    if(actualKeyRate > 0.0) {
+      totalDuration = expectedNbOp / actualKeyRate;
+      ::printf("\nUsing ESTIMATED duration based on measured performance: %.2f hours\n", totalDuration / 3600.0);
+    } else {
+      // Fallback if no key rate available yet (shouldn't happen)
+      totalDuration = expectedNbOp / 1e6;
+      ::printf("\nUsing ESTIMATED duration (no performance data yet): %.2f hours\n", totalDuration / 3600.0);
+    }
   }
 
   phase1EndTime = startTime + (totalDuration * gradConfig.phase1Duration);
@@ -756,8 +762,23 @@ void Kangaroo::ProcessServer() {
 
     t1 = Timer::get_tick();
 
+    // Initialize Graduated DP Strategy for server mode
+    // Server mode should use manual duration (-gdp-time flag)
+    if(gradConfig.enabled && !gradDPInitialized && !endOfSearch) {
+      if((t1 - startTime) >= 10.0) {
+        if(gradConfig.manualDuration > 0.0) {
+          InitGraduatedDP(0.0);  // Server mode uses manual duration only
+          gradDPInitialized = true;
+        } else {
+          // No manual duration specified in server mode, disable GDP
+          ::printf("\nWARNING: Graduated DP requires -gdp-time flag in server mode. Disabling.\n");
+          gradConfig.enabled = false;
+        }
+      }
+    }
+
     // Update Graduated DP Strategy phases and bucket statistics
-    if(gradConfig.enabled && !endOfSearch) {
+    if(gradConfig.enabled && gradDPInitialized && !endOfSearch) {
       UpdatePhase(t1);  // Check for phase transitions
 
       // Update bucket stats every 5 seconds
@@ -915,19 +936,6 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
     t1 = Timer::get_tick();
 
-    // Update Graduated DP Strategy phases and bucket statistics
-    if(gradConfig.enabled && !endOfSearch) {
-      UpdatePhase(t1);  // Check for phase transitions
-
-      // Update bucket stats every 5 seconds
-      if((t1 - lastHotspotUpdate) > 5.0) {
-        UpdateBucketStatistics(t1);
-        CalculateHotspotScores();
-        UpdateTopHotspots();
-        lastHotspotUpdate = t1;
-      }
-    }
-
     keyRate = (double)(count - lastCount) / (t1 - t0);
     gpuKeyRate = (double)(gpuCount - lastGPUCount) / (t1 - t0);
     lastkeyRate[filterPos%FILTER_SIZE] = keyRate;
@@ -943,6 +951,28 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
     avgKeyRate /= (double)(nbSample);
     avgGpuKeyRate /= (double)(nbSample);
     double expectedTime = expectedNbOp / avgKeyRate;
+
+    // Initialize Graduated DP Strategy once we have stable key rate measurements
+    // Wait for at least 10 seconds and 3 samples for accurate estimation
+    if(gradConfig.enabled && !gradDPInitialized && !endOfSearch) {
+      if((t1 - startTime) >= 10.0 && nbSample >= 3 && avgKeyRate > 0.0) {
+        InitGraduatedDP(avgKeyRate);
+        gradDPInitialized = true;
+      }
+    }
+
+    // Update Graduated DP Strategy phases and bucket statistics
+    if(gradConfig.enabled && gradDPInitialized && !endOfSearch) {
+      UpdatePhase(t1);  // Check for phase transitions
+
+      // Update bucket stats every 5 seconds
+      if((t1 - lastHotspotUpdate) > 5.0) {
+        UpdateBucketStatistics(t1);
+        CalculateHotspotScores();
+        UpdateTopHotspots();
+        lastHotspotUpdate = t1;
+      }
+    }
 
     // Display stats
     if(isAlive(params) && !endOfSearch) {
