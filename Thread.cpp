@@ -376,16 +376,22 @@ void Kangaroo::InitGraduatedDP(double actualKeyRate) {
       (std::string(GetTimeStr(totalDuration)) + " (manual)").c_str() :
       (std::string(GetTimeStr(totalDuration)) + " (estimated)").c_str());
   ::printf("╠════════════════════════════════════════════════════════════════════════╣\n");
-  ::printf("║  Phase 1: WIDE NET      - %.0f%% of time - DP bits: base%+d (FAST)      ║\n",
-    gradConfig.phase1Duration * 100, gradConfig.phase1DPBits);
+
+  // Calculate actual DP bit counts for each phase
+  int32_t phase1DP = (int32_t)dpSize + gradConfig.phase1DPBits;
+  int32_t phase2DP = (int32_t)dpSize + gradConfig.phase2DPBits;
+  int32_t phase3DP = (int32_t)dpSize + gradConfig.phase3DPBits;
+
+  ::printf("║  Phase 1: WIDE NET      - %.0f%% of time - DP: %d bits (FAST)          ║\n",
+    gradConfig.phase1Duration * 100, phase1DP);
   ::printf("║           Duration: %-49s ║\n",
     GetTimeStr(totalDuration * gradConfig.phase1Duration).c_str());
-  ::printf("║  Phase 2: FOCUSED       - %.0f%% of time - DP bits: base%+d (ADAPTIVE)  ║\n",
-    gradConfig.phase2Duration * 100, gradConfig.phase2DPBits);
+  ::printf("║  Phase 2: FOCUSED       - %.0f%% of time - DP: %d bits (ADAPTIVE)      ║\n",
+    gradConfig.phase2Duration * 100, phase2DP);
   ::printf("║           Duration: %-49s ║\n",
     GetTimeStr(totalDuration * gradConfig.phase2Duration).c_str());
-  ::printf("║  Phase 3: PRECISION     - %.0f%% of time - DP bits: base%+d (TARGETED)  ║\n",
-    gradConfig.phase3Duration * 100, gradConfig.phase3DPBits);
+  ::printf("║  Phase 3: PRECISION     - %.0f%% of time - DP: %d bits (TARGETED)      ║\n",
+    gradConfig.phase3Duration * 100, phase3DP);
   ::printf("║           Duration: %-49s ║\n",
     GetTimeStr(totalDuration * gradConfig.phase3Duration).c_str());
   ::printf("╠════════════════════════════════════════════════════════════════════════╣\n");
@@ -799,7 +805,10 @@ void Kangaroo::ProcessServer() {
       double gap128 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
       double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
       double currentGap = gap128 / 1000000000.0;
-      double lowest = lowestGap128 / 1000000000.0;
+      // Check if lowestGap is still at initial max value (not yet set)
+      bool lowestGapValid = !(lowestGap.i64[0] == 0xFFFFFFFFFFFFFFFFULL &&
+                              lowestGap.i64[1] == 0x3FFFFFFFFFFFFFFFULL);
+      double lowest = lowestGapValid ? (lowestGap128 / 1000000000.0) : 0.0;
 
       // First line - original progress bar
       printf("\r[Client %d][Kang 2^%.2f][DP Count 2^%.2f/2^%.2f][Dead %.0f][T/W:%.3f][Gap:%.1f][L.Gap:%.1f][%s][%s]  ",
@@ -984,7 +993,10 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       double gap128 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
       double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
       double currentGap = gap128 / 1000000000.0;
-      double lowest = lowestGap128 / 1000000000.0;
+      // Check if lowestGap is still at initial max value (not yet set)
+      bool lowestGapValid = !(lowestGap.i64[0] == 0xFFFFFFFFFFFFFFFFULL &&
+                              lowestGap.i64[1] == 0x3FFFFFFFFFFFFFFFULL);
+      double lowest = lowestGapValid ? (lowestGap128 / 1000000000.0) : 0.0;
 
       // First line - original progress bar
       if(clientMode) {
