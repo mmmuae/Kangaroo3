@@ -730,9 +730,14 @@ void Kangaroo::RespawnKangaroosToHotspots(double respawnPercentage, TH_PARAM *th
   uint64_t totalRespawned = 0;
 
   // Now it's safe to modify thread kangaroo data
-  // Respawn kangaroos in each CPU thread
+  // Respawn kangaroos in each CPU/GPU thread
   for(int t = 0; t < nbThread; t++) {
-    if(threads[t].isRunning) {
+    if(threads[t].isRunning && threads[t].nbKangaroo > 0) {
+      // Skip if kangaroo arrays not allocated (GPU threads may free them if not saving)
+      if(threads[t].px == nullptr || threads[t].py == nullptr || threads[t].distance == nullptr) {
+        continue;
+      }
+
       uint64_t nbToRespawn = (uint64_t)(threads[t].nbKangaroo * respawnPercentage);
 
       for(uint64_t i = 0; i < nbToRespawn; i++) {
@@ -777,6 +782,14 @@ void Kangaroo::RespawnKangaroosToHotspots(double respawnPercentage, TH_PARAM *th
 
         totalRespawned++;
       }
+
+#ifdef WITHGPU
+      // For GPU threads, send updated kangaroos back to GPU
+      if(threads[t].gpuEngine != nullptr) {
+        GPUEngine *gpu = (GPUEngine *)threads[t].gpuEngine;
+        gpu->SetKangaroos(threads[t].px, threads[t].py, threads[t].distance);
+      }
+#endif
     }
   }
 
@@ -1128,7 +1141,7 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       if(phaseTransitioned && !topHotspots.empty()) {
         // Reseed percentage based on phase
         double respawnPct = (currentPhase == PHASE_FOCUSED) ? 0.30 : 0.50;  // 30% for Phase 2, 50% for Phase 3
-        RespawnKangaroosToHotspots(respawnPct, params, nbCPUThread);
+        RespawnKangaroosToHotspots(respawnPct, params, totalThreads);  // Include GPU threads!
         ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
         ::printf("\n");
       }

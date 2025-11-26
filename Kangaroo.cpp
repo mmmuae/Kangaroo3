@@ -654,7 +654,8 @@ void Kangaroo::SolveKeyGPU(TH_PARAM *ph) {
   gpu->SetParams(dMask,jumpDistance,jumpPointx,jumpPointy);
   gpu->SetKangaroos(ph->px,ph->py,ph->distance);
 
-  if(workFile.length()==0 || !saveKangaroo) {
+  // Keep kangaroo arrays if we need to save work OR if GDP respawning is enabled
+  if((workFile.length()==0 || !saveKangaroo) && !gradConfig.enabled) {
     // No need to get back kangaroo, free memory
     safe_delete_array(ph->px);
     safe_delete_array(ph->py);
