@@ -69,6 +69,14 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
   this->lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
   this->lowestGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+
+  // Initialize LZB analysis variables
+  this->maxLeadingZeroBits = 0;
+  this->closestXorDiff.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
+  this->closestXorDiff.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
+  this->maxLZBBucket = 0;
+  this->topHotBuckets.reserve(5);
+
   this->keyIdx = 0;
   this->splitWorkfile = splitWorkfile;
   this->pid = Timer::getPID();
@@ -1069,6 +1077,13 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
       minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
       lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
       lowestGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+
+      // Reset LZB analysis variables
+      maxLeadingZeroBits = 0;
+      closestXorDiff.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
+      closestXorDiff.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
+      maxLZBBucket = 0;
+      topHotBuckets.clear();
 
       // Reset conters
       memset(counters,0,sizeof(counters));
