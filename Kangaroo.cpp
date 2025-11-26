@@ -77,6 +77,26 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->maxLZBBucket = 0;
   this->topHotBuckets.reserve(5);
 
+  // Initialize Graduated DP Strategy
+  this->currentPhase = PHASE_WIDE_NET;
+  this->gradConfig = GraduatedDPConfig();  // Use defaults
+  this->phaseStartTime = 0.0;
+  this->phase1EndTime = 0.0;
+  this->phase2EndTime = 0.0;
+  this->phase3EndTime = 0.0;
+  this->bucketStats = nullptr;  // Allocated in InitGraduatedDP()
+  this->lastHotspotUpdate = 0.0;
+  this->totalDPsAtPhaseStart = 0;
+  this->phase1Completed = false;
+  this->phase2Completed = false;
+  this->phase3Completed = false;
+  this->phase1DPCount = 0;
+  this->phase2DPCount = 0;
+  this->phase3DPCount = 0;
+  this->phase1Speedup = 0.0;
+  this->phase2Efficiency = 0.0;
+  this->phase3Precision = 0.0;
+
   this->keyIdx = 0;
   this->splitWorkfile = splitWorkfile;
   this->pid = Timer::getPID();
@@ -93,6 +113,16 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   signal(SIGPIPE, SIG_IGN);
 #endif
 
+}
+
+// ----------------------------------------------------------------------------
+
+Kangaroo::~Kangaroo() {
+  // Clean up graduated DP bucket statistics array
+  if(bucketStats != nullptr) {
+    delete[] bucketStats;
+    bucketStats = nullptr;
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -1048,6 +1078,9 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
   }
 
   SetDP(initDPSize);
+
+  // Initialize Graduated DP Strategy
+  InitGraduatedDP();
 
   // Fetch kangaroos (if any)
   FectchKangaroos(params);

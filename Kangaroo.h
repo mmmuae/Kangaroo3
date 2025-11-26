@@ -128,9 +128,45 @@ class Kangaroo {
 
 public:
 
+  // Phase progression for graduated DP strategy
+  enum SearchPhase {
+    PHASE_WIDE_NET = 0,      // 25% of time: aggressive DP mask, rapid coverage
+    PHASE_FOCUSED = 1,       // 50% of time: normal DP mask, biased spawning
+    PHASE_PRECISION = 2,     // 25% of time: conservative DP mask, hotspot only
+    PHASE_DISABLED = 99      // Traditional single-phase mode
+  };
+
+  // Graduated DP configuration struct
+  struct GraduatedDPConfig {
+    bool enabled;                 // Enable graduated DP strategy
+    double manualDuration;        // Manual duration in hours (0 = use expected time)
+    double phase1Duration;        // Phase 1: % of total time (default 0.25)
+    double phase2Duration;        // Phase 2: % of total time (default 0.50)
+    double phase3Duration;        // Phase 3: % of total time (default 0.25)
+    int32_t phase1DPBits;        // DP bits for Phase 1 (aggressive, e.g. -4)
+    int32_t phase2DPBits;        // DP bits for Phase 2 (normal, e.g. 0)
+    int32_t phase3DPBits;        // DP bits for Phase 3 (conservative, e.g. +4)
+    double hotspotBiasPhase2;    // % kangaroos to spawn in hotspots (0.0-1.0)
+    double hotspotBiasPhase3;    // % kangaroos to spawn in hotspots (0.0-1.0)
+    uint32_t topHotspotsCount;   // Number of top hotspots to track
+    double scoreDecayRate;       // Score decay per second (0.0-1.0)
+    double minHotspotScore;      // Minimum score to consider as hotspot
+
+    GraduatedDPConfig() : enabled(true), manualDuration(0.0),
+                         phase1Duration(0.25), phase2Duration(0.50), phase3Duration(0.25),
+                         phase1DPBits(-4), phase2DPBits(0), phase3DPBits(4),
+                         hotspotBiasPhase2(0.70), hotspotBiasPhase3(0.95),
+                         topHotspotsCount(100), scoreDecayRate(0.001),
+                         minHotspotScore(1.5) {}
+  };
+
+  // Public access to graduated DP configuration
+  GraduatedDPConfig gradConfig;
+
   Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,std::string &workFile,std::string &iWorkFile,
            uint32_t savePeriod,bool saveKangaroo,bool saveKangarooByServer,double maxStep,int wtimeout,int sport,int ntimeout,
            std::string serverIp,std::string outputFile,bool splitWorkfile);
+  ~Kangaroo();
   void Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize);
   void RunServer();
   bool ParseConfigFile(std::string &fileName);
@@ -182,6 +218,19 @@ private:
   void UpdateHotBuckets(uint32_t bucketId, uint32_t lzb, int128_t *xorDiff);
   double CalculateCollisionProbability(uint64_t numDPs);
   double CalculateETAForProbability(double targetProb, uint64_t currentDPs, double currentRate);
+
+  // Graduated DP Strategy methods
+  void InitGraduatedDP();
+  void UpdatePhase(double currentTime);
+  uint32_t GetCurrentDPSize();
+  void UpdateBucketStatistics(double currentTime);
+  void CalculateHotspotScores();
+  void UpdateTopHotspots();
+  uint32_t SelectSpawnBucket(bool isTame);  // Adaptive spawning
+  void GetPhaseInfo(char *buffer, size_t bufSize);
+  void ResetPhaseStatistics();
+  double GetPhaseProgress();
+  const char* GetPhaseName(SearchPhase phase);
 
   // Backup stuff
   void SaveWork(std::string fileName,FILE *f,int type,uint64_t totalCount,double totalTime);
@@ -276,6 +325,65 @@ private:
     }
   };
   std::vector<HotBucket> topHotBuckets;  // Top 5 hottest buckets
+
+  // ============================================================================
+  // GRADUATED DP STRATEGY - Multi-Phase Adaptive Search
+  // ============================================================================
+
+  // Per-bucket statistics for hotspot detection
+  struct BucketStats {
+    uint32_t tameCount;           // TAME DPs in this bucket
+    uint32_t wildCount;           // WILD DPs in this bucket
+    double lastArrivalTime;       // Timestamp of last DP arrival
+    double densityScore;          // DP density relative to average
+    double balanceScore;          // How close TAME/WILD ratio is to 1.0
+    double collisionScore;        // Combined score for collision likelihood
+    double decayFactor;           // Time-based decay (recent = higher weight)
+
+    BucketStats() : tameCount(0), wildCount(0), lastArrivalTime(0.0),
+                    densityScore(0.0), balanceScore(0.0),
+                    collisionScore(0.0), decayFactor(1.0) {}
+  };
+
+  // Hotspot for adaptive spawning
+  struct Hotspot {
+    uint32_t bucketId;
+    double score;
+    uint32_t tameCount;
+    uint32_t wildCount;
+
+    bool operator<(const Hotspot& other) const {
+      return score > other.score; // Descending order
+    }
+  };
+
+  // Current graduated DP state
+  SearchPhase currentPhase;
+  double phaseStartTime;
+  double phase1EndTime;
+  double phase2EndTime;
+  double phase3EndTime;
+
+  // Per-bucket statistics (one per hash bucket)
+  BucketStats *bucketStats;      // Array of HASH_SIZE elements
+
+  // Top hotspots for adaptive spawning
+  std::vector<Hotspot> topHotspots;
+  double lastHotspotUpdate;
+  uint64_t totalDPsAtPhaseStart;
+
+  // Phase transition tracking
+  bool phase1Completed;
+  bool phase2Completed;
+  bool phase3Completed;
+
+  // Statistics for efficiency measurement
+  uint64_t phase1DPCount;
+  uint64_t phase2DPCount;
+  uint64_t phase3DPCount;
+  double phase1Speedup;          // Actual vs expected speedup
+  double phase2Efficiency;       // Hotspot hit rate
+  double phase3Precision;        // Focused search effectiveness
 
   std::vector<Point> keysToSearch;
   Point keyToSearch;

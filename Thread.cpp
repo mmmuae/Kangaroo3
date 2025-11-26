@@ -316,6 +316,396 @@ double Kangaroo::CalculateETAForProbability(double targetProb, uint64_t currentD
   return timeSeconds;
 }
 
+// ============================================================================
+// GRADUATED DP STRATEGY IMPLEMENTATION
+// ============================================================================
+
+// Initialize graduated DP strategy
+void Kangaroo::InitGraduatedDP() {
+
+  if(!gradConfig.enabled) {
+    currentPhase = PHASE_DISABLED;
+    return;
+  }
+
+  // Allocate per-bucket statistics
+  if(bucketStats == nullptr) {
+    bucketStats = new BucketStats[HASH_SIZE];
+  }
+
+  // Reset all bucket stats
+  for(uint32_t i = 0; i < HASH_SIZE; i++) {
+    bucketStats[i] = BucketStats();
+  }
+
+  // Reserve space for hotspots
+  topHotspots.reserve(gradConfig.topHotspotsCount);
+
+  // Calculate phase end times - use manual duration if specified, otherwise estimate
+  double totalDuration;  // in seconds
+
+  if(gradConfig.manualDuration > 0.0) {
+    // User specified manual duration in hours
+    totalDuration = gradConfig.manualDuration * 3600.0;  // Convert to seconds
+    ::printf("\nUsing MANUAL duration: %.1f hours\n", gradConfig.manualDuration);
+  } else {
+    // Estimate based on expected operations (for small puzzles)
+    totalDuration = expectedNbOp / 1e6;  // Rough estimate
+    ::printf("\nUsing ESTIMATED duration: %.2f hours\n", totalDuration / 3600.0);
+  }
+
+  phase1EndTime = startTime + (totalDuration * gradConfig.phase1Duration);
+  phase2EndTime = phase1EndTime + (totalDuration * gradConfig.phase2Duration);
+  phase3EndTime = phase2EndTime + (totalDuration * gradConfig.phase3Duration);
+
+  phaseStartTime = startTime;
+  currentPhase = PHASE_WIDE_NET;
+
+  ::printf("\n");
+  ::printf("╔════════════════════════════════════════════════════════════════════════╗\n");
+  ::printf("║           GRADUATED DP STRATEGY - MULTI-PHASE SEARCH ENABLED          ║\n");
+  ::printf("╠════════════════════════════════════════════════════════════════════════╣\n");
+  ::printf("║  Total Duration: %-52s     ║\n",
+    gradConfig.manualDuration > 0.0 ?
+      (std::string(GetTimeStr(totalDuration)) + " (manual)").c_str() :
+      (std::string(GetTimeStr(totalDuration)) + " (estimated)").c_str());
+  ::printf("╠════════════════════════════════════════════════════════════════════════╣\n");
+  ::printf("║  Phase 1: WIDE NET      - %.0f%% of time - DP bits: base%+d (FAST)      ║\n",
+    gradConfig.phase1Duration * 100, gradConfig.phase1DPBits);
+  ::printf("║           Duration: %-49s ║\n",
+    GetTimeStr(totalDuration * gradConfig.phase1Duration).c_str());
+  ::printf("║  Phase 2: FOCUSED       - %.0f%% of time - DP bits: base%+d (ADAPTIVE)  ║\n",
+    gradConfig.phase2Duration * 100, gradConfig.phase2DPBits);
+  ::printf("║           Duration: %-49s ║\n",
+    GetTimeStr(totalDuration * gradConfig.phase2Duration).c_str());
+  ::printf("║  Phase 3: PRECISION     - %.0f%% of time - DP bits: base%+d (TARGETED)  ║\n",
+    gradConfig.phase3Duration * 100, gradConfig.phase3DPBits);
+  ::printf("║           Duration: %-49s ║\n",
+    GetTimeStr(totalDuration * gradConfig.phase3Duration).c_str());
+  ::printf("╠════════════════════════════════════════════════════════════════════════╣\n");
+  ::printf("║  Hotspot Bias Phase 2: %.0f%%  |  Hotspot Bias Phase 3: %.0f%%            ║\n",
+    gradConfig.hotspotBiasPhase2 * 100, gradConfig.hotspotBiasPhase3 * 100);
+  ::printf("║  Tracking Top %u Hotspots with %.1f%% decay per second               ║\n",
+    gradConfig.topHotspotsCount, gradConfig.scoreDecayRate * 100);
+  ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
+  ::printf("\n");
+
+  ResetPhaseStatistics();
+}
+
+// Update current phase based on time elapsed
+void Kangaroo::UpdatePhase(double currentTime) {
+
+  if(!gradConfig.enabled) return;
+
+  SearchPhase oldPhase = currentPhase;
+
+  if(currentTime >= phase3EndTime && !phase3Completed) {
+    // Should not reach here, search should complete before phase 3 ends
+    currentPhase = PHASE_PRECISION;
+  } else if(currentTime >= phase2EndTime && !phase2Completed) {
+    currentPhase = PHASE_PRECISION;
+    if(oldPhase != PHASE_PRECISION) {
+      phase2Completed = true;
+      ::printf("\n");
+      ::printf("╔════════════════════════════════════════════════════════════════════════╗\n");
+      ::printf("║  ⚡ PHASE TRANSITION: FOCUSED → PRECISION                              ║\n");
+      ::printf("║  Entering Phase 3: Precision Strike on hottest %u buckets            ║\n",
+        (topHotspots.size() < 20) ? (uint32_t)topHotspots.size() : 20);
+      ::printf("║  DP Mask: base%+d (ultra-dense coverage in hot zones)                ║\n",
+        gradConfig.phase3DPBits);
+      ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
+      ::printf("\n");
+      ResetPhaseStatistics();
+    }
+  } else if(currentTime >= phase1EndTime && !phase1Completed) {
+    currentPhase = PHASE_FOCUSED;
+    if(oldPhase != PHASE_FOCUSED) {
+      phase1Completed = true;
+      ::printf("\n");
+      ::printf("╔════════════════════════════════════════════════════════════════════════╗\n");
+      ::printf("║  ⚡ PHASE TRANSITION: WIDE NET → FOCUSED                               ║\n");
+      ::printf("║  Phase 1 Complete! Found %llu DPs in %.0f%%   of expected time         ║\n",
+        (unsigned long long)phase1DPCount, GetPhaseProgress() * 100);
+      ::printf("║  Identified %u hotspots for focused search                            ║\n",
+        (uint32_t)topHotspots.size());
+      ::printf("║  DP Mask: base%+d with %.0f%% spawning in hotspots                       ║\n",
+        gradConfig.phase2DPBits, gradConfig.hotspotBiasPhase2 * 100);
+      ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
+      ::printf("\n");
+      ResetPhaseStatistics();
+    }
+  }
+
+  // Update DP size if phase changed
+  if(oldPhase != currentPhase) {
+    uint32_t newDPSize = GetCurrentDPSize();
+    SetDP(newDPSize);
+  }
+}
+
+// Get current DP size based on phase
+uint32_t Kangaroo::GetCurrentDPSize() {
+
+  if(!gradConfig.enabled) {
+    return initDPSize;  // Use original DP size
+  }
+
+  int32_t adjustment = 0;
+
+  switch(currentPhase) {
+    case PHASE_WIDE_NET:
+      adjustment = gradConfig.phase1DPBits;
+      break;
+    case PHASE_FOCUSED:
+      adjustment = gradConfig.phase2DPBits;
+      break;
+    case PHASE_PRECISION:
+      adjustment = gradConfig.phase3DPBits;
+      break;
+    case PHASE_DISABLED:
+    default:
+      return initDPSize;
+  }
+
+  int32_t newSize = (int32_t)initDPSize + adjustment;
+
+  // Clamp to reasonable range [8, 32]
+  if(newSize < 8) newSize = 8;
+  if(newSize > 32) newSize = 32;
+
+  return (uint32_t)newSize;
+}
+
+// Update bucket statistics (called from ScanGapsThread)
+void Kangaroo::UpdateBucketStatistics(double currentTime) {
+
+  if(!gradConfig.enabled || bucketStats == nullptr) return;
+
+  // This is called with ghMutex already locked from ScanGapsThread
+
+  // Update stats for each bucket based on current hash table contents
+  for(uint32_t h = 0; h < HASH_SIZE; h++) {
+
+    uint32_t nbItem = hashTable.E[h].nbItem;
+    if(nbItem == 0) continue;
+
+    uint32_t tameInBucket = 0;
+    uint32_t wildInBucket = 0;
+
+    // Count TAME and WILD DPs in this bucket
+    for(uint32_t i = 0; i < nbItem; i++) {
+      ENTRY* entry = hashTable.E[h].items[i];
+      uint32_t type = (entry->d.i64[1] & 0x4000000000000000ULL) != 0;
+      if(type == 0) {
+        tameInBucket++;
+      } else {
+        wildInBucket++;
+      }
+    }
+
+    // Update counts
+    bucketStats[h].tameCount = tameInBucket;
+    bucketStats[h].wildCount = wildInBucket;
+
+    // Update last arrival time if this bucket changed
+    if(tameInBucket + wildInBucket > 0) {
+      bucketStats[h].lastArrivalTime = currentTime;
+    }
+
+    // Calculate time-based decay factor (recent activity = higher weight)
+    double timeSinceLastArrival = currentTime - bucketStats[h].lastArrivalTime;
+    bucketStats[h].decayFactor = exp(-gradConfig.scoreDecayRate * timeSinceLastArrival);
+  }
+}
+
+// Calculate hotspot scores for all buckets
+void Kangaroo::CalculateHotspotScores() {
+
+  if(!gradConfig.enabled || bucketStats == nullptr) return;
+
+  uint64_t totalDPs = hashTable.GetNbItem();
+  if(totalDPs == 0) return;
+
+  double avgDPsPerBucket = (double)totalDPs / (double)HASH_SIZE;
+
+  for(uint32_t h = 0; h < HASH_SIZE; h++) {
+
+    uint32_t total = bucketStats[h].tameCount + bucketStats[h].wildCount;
+    if(total == 0) {
+      bucketStats[h].densityScore = 0.0;
+      bucketStats[h].balanceScore = 0.0;
+      bucketStats[h].collisionScore = 0.0;
+      continue;
+    }
+
+    // Density score: how many DPs relative to average
+    bucketStats[h].densityScore = (double)total / avgDPsPerBucket;
+
+    // Balance score: how close is TAME/WILD ratio to 1.0
+    if(bucketStats[h].tameCount > 0 && bucketStats[h].wildCount > 0) {
+      double ratio = (double)bucketStats[h].tameCount / (double)bucketStats[h].wildCount;
+      if(ratio > 1.0) ratio = 1.0 / ratio;  // Normalize to [0,1]
+      bucketStats[h].balanceScore = ratio;  // 1.0 = perfect balance
+    } else {
+      bucketStats[h].balanceScore = 0.0;  // Only one herd present
+    }
+
+    // Collision score: combines density, balance, and recency
+    // High score = high density + balanced TAME/WILD + recent activity
+    bucketStats[h].collisionScore =
+      bucketStats[h].densityScore *
+      bucketStats[h].balanceScore *
+      bucketStats[h].decayFactor;
+  }
+}
+
+// Update top hotspots list
+void Kangaroo::UpdateTopHotspots() {
+
+  if(!gradConfig.enabled || bucketStats == nullptr) return;
+
+  topHotspots.clear();
+
+  // Collect all buckets with score above minimum threshold
+  for(uint32_t h = 0; h < HASH_SIZE; h++) {
+    if(bucketStats[h].collisionScore >= gradConfig.minHotspotScore) {
+      Hotspot hs;
+      hs.bucketId = h;
+      hs.score = bucketStats[h].collisionScore;
+      hs.tameCount = bucketStats[h].tameCount;
+      hs.wildCount = bucketStats[h].wildCount;
+      topHotspots.push_back(hs);
+    }
+  }
+
+  // Sort by score (descending)
+  std::sort(topHotspots.begin(), topHotspots.end());
+
+  // Keep only top N
+  if(topHotspots.size() > gradConfig.topHotspotsCount) {
+    topHotspots.resize(gradConfig.topHotspotsCount);
+  }
+}
+
+// Select spawn bucket based on current phase and hotspots
+uint32_t Kangaroo::SelectSpawnBucket(bool isTame) {
+
+  if(!gradConfig.enabled || currentPhase == PHASE_WIDE_NET || topHotspots.empty()) {
+    // Phase 1 or no hotspots: uniform random spawning
+    return (uint32_t)(rndl() % HASH_SIZE);
+  }
+
+  double bias = 0.0;
+  if(currentPhase == PHASE_FOCUSED) {
+    bias = gradConfig.hotspotBiasPhase2;
+  } else if(currentPhase == PHASE_PRECISION) {
+    bias = gradConfig.hotspotBiasPhase3;
+  }
+
+  // Decide whether to spawn in hotspot or uniformly
+  double r = (double)rndl() / (double)0xFFFFFFFFFFFFFFFFULL;
+
+  if(r < bias && !topHotspots.empty()) {
+    // Spawn in a hotspot (weighted by score)
+
+    // Calculate total score
+    double totalScore = 0.0;
+    for(size_t i = 0; i < topHotspots.size(); i++) {
+      totalScore += topHotspots[i].score;
+    }
+
+    if(totalScore <= 0.0) {
+      return (uint32_t)(rndl() % HASH_SIZE);  // Fallback to uniform
+    }
+
+    // Select hotspot weighted by score
+    double target = ((double)rndl() / (double)0xFFFFFFFFFFFFFFFFULL) * totalScore;
+    double cumulative = 0.0;
+
+    for(size_t i = 0; i < topHotspots.size(); i++) {
+      cumulative += topHotspots[i].score;
+      if(cumulative >= target) {
+        return topHotspots[i].bucketId;
+      }
+    }
+
+    // Fallback (should not reach here)
+    return topHotspots[0].bucketId;
+
+  } else {
+    // Uniform random spawning
+    return (uint32_t)(rndl() % HASH_SIZE);
+  }
+}
+
+// Get phase information for display
+void Kangaroo::GetPhaseInfo(char *buffer, size_t bufSize) {
+
+  if(!gradConfig.enabled) {
+    snprintf(buffer, bufSize, "STANDARD");
+    return;
+  }
+
+  const char *phaseName = GetPhaseName(currentPhase);
+  double progress = GetPhaseProgress() * 100.0;
+
+  snprintf(buffer, bufSize, "%s[%.0f%%]", phaseName, progress);
+}
+
+// Reset phase statistics
+void Kangaroo::ResetPhaseStatistics() {
+  totalDPsAtPhaseStart = hashTable.GetNbItem();
+}
+
+// Get progress through current phase (0.0 to 1.0)
+double Kangaroo::GetPhaseProgress() {
+
+  if(!gradConfig.enabled) return 0.0;
+
+  double currentTime = Timer::get_tick();
+  double phaseStart, phaseEnd;
+
+  switch(currentPhase) {
+    case PHASE_WIDE_NET:
+      phaseStart = startTime;
+      phaseEnd = phase1EndTime;
+      break;
+    case PHASE_FOCUSED:
+      phaseStart = phase1EndTime;
+      phaseEnd = phase2EndTime;
+      break;
+    case PHASE_PRECISION:
+      phaseStart = phase2EndTime;
+      phaseEnd = phase3EndTime;
+      break;
+    default:
+      return 0.0;
+  }
+
+  if(phaseEnd <= phaseStart) return 0.0;
+
+  double progress = (currentTime - phaseStart) / (phaseEnd - phaseStart);
+  if(progress < 0.0) progress = 0.0;
+  if(progress > 1.0) progress = 1.0;
+
+  return progress;
+}
+
+// Get phase name string
+const char* Kangaroo::GetPhaseName(SearchPhase phase) {
+  switch(phase) {
+    case PHASE_WIDE_NET:  return "WIDE NET";
+    case PHASE_FOCUSED:   return "FOCUSED";
+    case PHASE_PRECISION: return "PRECISION";
+    default:              return "STANDARD";
+  }
+}
+
+// ============================================================================
+// END GRADUATED DP STRATEGY
+// ============================================================================
+
 // Wait for end of server and dispay stats
 void Kangaroo::ProcessServer() {
 
@@ -365,6 +755,19 @@ void Kangaroo::ProcessServer() {
     Timer::SleepMillis((uint32_t)(toSleep*1000.0));
 
     t1 = Timer::get_tick();
+
+    // Update Graduated DP Strategy phases and bucket statistics
+    if(gradConfig.enabled && !endOfSearch) {
+      UpdatePhase(t1);  // Check for phase transitions
+
+      // Update bucket stats every 5 seconds
+      if((t1 - lastHotspotUpdate) > 5.0) {
+        UpdateBucketStatistics(t1);
+        CalculateHotspotScores();
+        UpdateTopHotspots();
+        lastHotspotUpdate = t1;
+      }
+    }
 
     if(!endOfSearch) {
       // Calculate tame/wild ratio (1.000 = 50/50)
@@ -418,7 +821,7 @@ void Kangaroo::ProcessServer() {
       uint32_t localMaxLZB = maxLeadingZeroBits;
       UNLOCK(ghMutex);
 
-      printf("\n\033[K[LZB:%u/%.0f][P:%.1f%%][50%%:%s][90%%:%s]%s  \033[F",
+      printf("\n\033[K[LZB:%u/%.0f][P:%.1f%%][50%%:%s][90%%:%s]%s  ",
         localMaxLZB,
         expectedMaxLZB,
         collisionProb * 100.0,
@@ -426,6 +829,26 @@ void Kangaroo::ProcessServer() {
         (eta90 >= 0) ? GetTimeStr(eta90).c_str() : "N/A",
         hotBucketsStr
         );
+
+      // Third line - Graduated DP phase info
+      if(gradConfig.enabled) {
+        char phaseInfo[128];
+        GetPhaseInfo(phaseInfo, sizeof(phaseInfo));
+        uint32_t topHotspotCount = (uint32_t)topHotspots.size();
+        uint32_t topBucketId = topHotspots.empty() ? 0 : topHotspots[0].bucketId;
+        double topScore = topHotspots.empty() ? 0.0 : topHotspots[0].score;
+
+        printf("\n\033[K[PHASE:%s][Hotspots:%u][Top:0x%X(%.1f)]  \033[F\033[F",
+          phaseInfo,
+          topHotspotCount,
+          topBucketId,
+          topScore
+          );
+      } else {
+        // Just move cursor back up if graduated DP is disabled
+        printf("\033[F");
+      }
+
       fflush(stdout);
     }
 
@@ -491,6 +914,20 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
     count = getCPUCount() + gpuCount;
 
     t1 = Timer::get_tick();
+
+    // Update Graduated DP Strategy phases and bucket statistics
+    if(gradConfig.enabled && !endOfSearch) {
+      UpdatePhase(t1);  // Check for phase transitions
+
+      // Update bucket stats every 5 seconds
+      if((t1 - lastHotspotUpdate) > 5.0) {
+        UpdateBucketStatistics(t1);
+        CalculateHotspotScores();
+        UpdateTopHotspots();
+        lastHotspotUpdate = t1;
+      }
+    }
+
     keyRate = (double)(count - lastCount) / (t1 - t0);
     gpuKeyRate = (double)(gpuCount - lastGPUCount) / (t1 - t0);
     lastkeyRate[filterPos%FILTER_SIZE] = keyRate;
@@ -573,7 +1010,7 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       uint32_t localMaxLZB = maxLeadingZeroBits;
       UNLOCK(ghMutex);
 
-      printf("\n\033[K[LZB:%u/%.0f][P:%.1f%%][50%%:%s][90%%:%s]%s  \033[F",
+      printf("\n\033[K[LZB:%u/%.0f][P:%.1f%%][50%%:%s][90%%:%s]%s  ",
         localMaxLZB,
         expectedMaxLZB,
         collisionProb * 100.0,
@@ -581,6 +1018,26 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
         (eta90 >= 0) ? GetTimeStr(eta90).c_str() : "N/A",
         hotBucketsStr
         );
+
+      // Third line - Graduated DP phase info
+      if(gradConfig.enabled) {
+        char phaseInfo[128];
+        GetPhaseInfo(phaseInfo, sizeof(phaseInfo));
+        uint32_t topHotspotCount = (uint32_t)topHotspots.size();
+        uint32_t topBucketId = topHotspots.empty() ? 0 : topHotspots[0].bucketId;
+        double topScore = topHotspots.empty() ? 0.0 : topHotspots[0].score;
+
+        printf("\n\033[K[PHASE:%s][Hotspots:%u][Top:0x%X(%.1f)]  \033[F\033[F",
+          phaseInfo,
+          topHotspotCount,
+          topBucketId,
+          topScore
+          );
+      } else {
+        // Just move cursor back up if graduated DP is disabled
+        printf("\033[F");
+      }
+
       fflush(stdout);
 
     }
