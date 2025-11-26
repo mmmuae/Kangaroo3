@@ -621,6 +621,7 @@ void Kangaroo::SolveKeyGPU(TH_PARAM *ph) {
   GPUEngine *gpu;
 
   gpu = new GPUEngine(ph->gridSizeX,ph->gridSizeY,ph->gpuId,65536 * 2);
+  ph->gpuEngine = (void*)gpu;  // Store for later DP mask updates
 
   if(keyIdx == 0)
     ::printf("GPU: %s (%.1f MB used)\n",gpu->deviceName.c_str(),gpu->GetMemory() / 1048576.0);
@@ -653,7 +654,8 @@ void Kangaroo::SolveKeyGPU(TH_PARAM *ph) {
   gpu->SetParams(dMask,jumpDistance,jumpPointx,jumpPointy);
   gpu->SetKangaroos(ph->px,ph->py,ph->distance);
 
-  if(workFile.length()==0 || !saveKangaroo) {
+  // Keep kangaroo arrays if we need to save work OR if GDP respawning is enabled
+  if((workFile.length()==0 || !saveKangaroo) && !gradConfig.enabled) {
     // No need to get back kangaroo, free memory
     safe_delete_array(ph->px);
     safe_delete_array(ph->py);
@@ -731,6 +733,7 @@ void Kangaroo::SolveKeyGPU(TH_PARAM *ph) {
   safe_delete_array(ph->px);
   safe_delete_array(ph->py);
   safe_delete_array(ph->distance);
+  ph->gpuEngine = nullptr;  // Clear pointer before deletion
   delete gpu;
 
 #else
@@ -1168,6 +1171,7 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
       for(int i = 0; i < nbCPUThread; i++) {
         params[i].threadId = i;
         params[i].isRunning = true;
+        params[i].nbKangaroo = CPU_GRP_SIZE;  // Set kangaroo count for respawning
         thHandles[i] = LaunchThread(_SolveKeyCPU,params + i);
       }
 
