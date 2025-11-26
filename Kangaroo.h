@@ -221,7 +221,7 @@ private:
 
   // Graduated DP Strategy methods
   void InitGraduatedDP(double actualKeyRate = 0.0);
-  void UpdatePhase(double currentTime);
+  bool UpdatePhase(double currentTime);  // Returns true if phase transitioned
   uint32_t GetCurrentDPSize();
   void UpdateBucketStatistics(double currentTime);
   void CalculateHotspotScores();

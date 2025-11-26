@@ -418,11 +418,13 @@ void Kangaroo::InitGraduatedDP(double actualKeyRate) {
 }
 
 // Update current phase based on time elapsed
-void Kangaroo::UpdatePhase(double currentTime) {
+// Returns true if a phase transition occurred (triggers kangaroo reseeding)
+bool Kangaroo::UpdatePhase(double currentTime) {
 
-  if(!gradConfig.enabled) return;
+  if(!gradConfig.enabled) return false;
 
   SearchPhase oldPhase = currentPhase;
+  bool phaseChanged = false;
 
   if(currentTime >= phase3EndTime && !phase3Completed) {
     // Should not reach here, search should complete before phase 3 ends
@@ -431,6 +433,7 @@ void Kangaroo::UpdatePhase(double currentTime) {
     currentPhase = PHASE_PRECISION;
     if(oldPhase != PHASE_PRECISION) {
       phase2Completed = true;
+      phaseChanged = true;
 
       // Apply new DP mask for Phase 3
       uint32_t newDPSize = GetCurrentDPSize();
@@ -439,18 +442,19 @@ void Kangaroo::UpdatePhase(double currentTime) {
       ::printf("\n");
       ::printf("╔════════════════════════════════════════════════════════════════════════╗\n");
       ::printf("║  ⚡ PHASE TRANSITION: FOCUSED → PRECISION                              ║\n");
+      ::printf("║  Phase 2 Complete! Found %llu DPs in %.0f%% of expected time          ║\n",
+        (unsigned long long)phase2DPCount, GetPhaseProgress() * 100);
       ::printf("║  Entering Phase 3: Precision Strike on hottest %u buckets            ║\n",
         (topHotspots.size() < 20) ? (uint32_t)topHotspots.size() : 20);
       ::printf("║  DP Mask: %u bits (ultra-dense coverage in hot zones)                 ║\n",
         newDPSize);
-      ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
-      ::printf("\n");
       ResetPhaseStatistics();
     }
   } else if(currentTime >= phase1EndTime && !phase1Completed) {
     currentPhase = PHASE_FOCUSED;
     if(oldPhase != PHASE_FOCUSED) {
       phase1Completed = true;
+      phaseChanged = true;
 
       // Apply new DP mask for Phase 2
       uint32_t newDPSize = GetCurrentDPSize();
@@ -465,8 +469,6 @@ void Kangaroo::UpdatePhase(double currentTime) {
         (uint32_t)topHotspots.size());
       ::printf("║  DP Mask: %u bits with %.0f%% spawning in hotspots                     ║\n",
         newDPSize, gradConfig.hotspotBiasPhase2 * 100);
-      ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
-      ::printf("\n");
       ResetPhaseStatistics();
     }
   }
@@ -475,7 +477,10 @@ void Kangaroo::UpdatePhase(double currentTime) {
   if(oldPhase != currentPhase) {
     uint32_t newDPSize = GetCurrentDPSize();
     SetDP(newDPSize);
+    phaseChanged = true;
   }
+
+  return phaseChanged;
 }
 
 // Get current DP size based on phase
@@ -511,12 +516,11 @@ uint32_t Kangaroo::GetCurrentDPSize() {
   return (uint32_t)newSize;
 }
 
-// Update bucket statistics (called from ScanGapsThread)
+// Update bucket statistics
+// NOTE: Caller must hold ghMutex lock when calling this function
 void Kangaroo::UpdateBucketStatistics(double currentTime) {
 
   if(!gradConfig.enabled || bucketStats == nullptr) return;
-
-  // This is called with ghMutex already locked from ScanGapsThread
 
   // Update stats for each bucket based on current hash table contents
   for(uint32_t h = 0; h < HASH_SIZE; h++) {
@@ -681,8 +685,27 @@ void Kangaroo::RespawnKangaroosToHotspots(double respawnPercentage, TH_PARAM *th
   ::printf("║  Reseeding %.0f%% of kangaroos to %u hotspots...                          ║\n",
     respawnPercentage * 100, (uint32_t)topHotspots.size());
 
+  // Wait for all threads to reach a safe point (same mechanism as SaveWork)
+  LOCK(saveMutex);
+  saveRequest = true;
+  int timeout = wtimeout;
+  while(!isWaiting(threads) && timeout > 0) {
+    Timer::SleepMillis(50);
+    timeout -= 50;
+  }
+
+  if(timeout <= 0) {
+    // Thread blocked or timed out
+    if(!endOfSearch)
+      ::printf("║  WARNING: Respawn timeout, skipping reseeding                            ║\n");
+    saveRequest = false;
+    UNLOCK(saveMutex);
+    return;
+  }
+
   uint64_t totalRespawned = 0;
 
+  // Now it's safe to modify thread kangaroo data
   // Respawn kangaroos in each CPU thread
   for(int t = 0; t < nbThread; t++) {
     if(threads[t].isRunning) {
@@ -735,6 +758,10 @@ void Kangaroo::RespawnKangaroosToHotspots(double respawnPercentage, TH_PARAM *th
 
   ::printf("║  ✓ Respawned %llu kangaroos to hotspot regions                             ║\n",
     (unsigned long long)totalRespawned);
+
+  // Release threads to continue
+  saveRequest = false;
+  UNLOCK(saveMutex);
 }
 
 // Get phase information for display
@@ -871,13 +898,23 @@ void Kangaroo::ProcessServer() {
 
     // Update Graduated DP Strategy phases and bucket statistics
     if(gradConfig.enabled && gradDPInitialized && !endOfSearch) {
-      UpdatePhase(t1);  // Check for phase transitions
+      bool phaseTransitioned = UpdatePhase(t1);  // Check for phase transitions
+
+      // Note: ProcessServer doesn't have local threads to reseed
+      // Phase transitions are tracked but respawning happens on clients
+      if(phaseTransitioned) {
+        ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
+        ::printf("\n");
+      }
 
       // Update bucket stats every 5 seconds
       if((t1 - lastHotspotUpdate) > 5.0) {
+        // Lock required for hash table access in UpdateBucketStatistics
+        LOCK(ghMutex);
         UpdateBucketStatistics(t1);
         CalculateHotspotScores();
         UpdateTopHotspots();
+        UNLOCK(ghMutex);
         lastHotspotUpdate = t1;
       }
     }
@@ -1058,13 +1095,25 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
     // Update Graduated DP Strategy phases and bucket statistics
     if(gradConfig.enabled && gradDPInitialized && !endOfSearch) {
-      UpdatePhase(t1);  // Check for phase transitions
+      bool phaseTransitioned = UpdatePhase(t1);  // Check for phase transitions
+
+      // If phase transitioned, reseed kangaroos to hotspots
+      if(phaseTransitioned && !topHotspots.empty()) {
+        // Reseed percentage based on phase
+        double respawnPct = (currentPhase == PHASE_FOCUSED) ? 0.30 : 0.50;  // 30% for Phase 2, 50% for Phase 3
+        RespawnKangaroosToHotspots(respawnPct, params, nbCPUThread);
+        ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
+        ::printf("\n");
+      }
 
       // Update bucket stats every 5 seconds
       if((t1 - lastHotspotUpdate) > 5.0) {
+        // Lock required for hash table access in UpdateBucketStatistics
+        LOCK(ghMutex);
         UpdateBucketStatistics(t1);
         CalculateHotspotScores();
         UpdateTopHotspots();
+        UNLOCK(ghMutex);
         lastHotspotUpdate = t1;
       }
     }
