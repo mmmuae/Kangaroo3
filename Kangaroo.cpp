@@ -80,6 +80,7 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   // Initialize Graduated DP Strategy
   this->currentPhase = PHASE_WIDE_NET;
   this->gradConfig = GraduatedDPConfig();  // Use defaults
+  this->gradDPInitialized = false;         // Will initialize once we have key rate
   this->phaseStartTime = 0.0;
   this->phase1EndTime = 0.0;
   this->phase2EndTime = 0.0;
@@ -1079,8 +1080,16 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
 
   SetDP(initDPSize);
 
-  // Initialize Graduated DP Strategy
-  InitGraduatedDP();
+  // Display Graduated DP Strategy status
+  if(gradConfig.enabled) {
+    if(gradConfig.manualDuration > 0.0) {
+      ::printf("Graduated DP Strategy: ENABLED (manual duration: %.1f hours)\n", gradConfig.manualDuration);
+      ::printf("  Phase breakdown will be displayed after initialization...\n");
+    } else {
+      ::printf("Graduated DP Strategy: ENABLED (auto duration)\n");
+      ::printf("  Collecting performance data for ~10 seconds before initialization...\n");
+    }
+  }
 
   // Fetch kangaroos (if any)
   FectchKangaroos(params);
