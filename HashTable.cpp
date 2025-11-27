@@ -54,13 +54,14 @@ uint64_t HashTable::GetNbItem() {
 
 }
 
-ENTRY *HashTable::CreateEntry(int128_t *x,int128_t *d) {
+// Updated for 256-bit support
+ENTRY *HashTable::CreateEntry(int128_t *x,Int *d,uint8_t type) {
 
   ENTRY *e = (ENTRY *)malloc(sizeof(ENTRY));
   e->x.i64[0] = x->i64[0];
   e->x.i64[1] = x->i64[1];
-  e->d.i64[0] = d->i64[0];
-  e->d.i64[1] = d->i64[1];
+  e->d.Set(d);  // Store full 256-bit distance
+  e->type = type;  // Store type separately
   return e;
 
 }
@@ -72,29 +73,11 @@ ENTRY *HashTable::CreateEntry(int128_t *x,int128_t *d) {
   E[h].items[st] = entry;                  \
   E[h].nbItem++;}
 
-void HashTable::Convert(Int *x,Int *d,uint32_t type,uint64_t *h,int128_t *X,int128_t *D) {
-
-  uint64_t sign = 0;
-  uint64_t type64 = (uint64_t)type << 62;
+// Simplified Convert for 256-bit support - only converts position to hash
+void HashTable::Convert(Int *x,uint64_t *h,int128_t *X) {
 
   X->i64[0] = x->bits64[0];
   X->i64[1] = x->bits64[1];
-
-  // Probability of failure (1/2^128)
-  if(d->bits64[3] > 0x7FFFFFFFFFFFFFFFULL) {
-    Int N(d);
-    N.ModNegK1order();
-    D->i64[0] = N.bits64[0];
-    D->i64[1] = N.bits64[1] & 0x3FFFFFFFFFFFFFFFULL;
-    sign = 1ULL << 63;
-  } else {
-    D->i64[0] = d->bits64[0];
-    D->i64[1] = d->bits64[1] & 0x3FFFFFFFFFFFFFFFULL;
-  }
-
-  D->i64[1] |= sign;
-  D->i64[1] |= type64;
-
   *h = (x->bits64[2] & HASH_MASK);
 
 }
@@ -157,12 +140,12 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
         AV1();
         nb1--;
       } else if (comp==0) {
-        if((e1.d.i64[0] == e2.d.i64[0]) && (e1.d.i64[1] == e2.d.i64[1])) {
+        if(e1.d.IsEqual(&e2.d) && e1.type == e2.type) {  // Compare full Int distance and type
           *duplicate = *duplicate + 1;
         } else {
           // Collision
-          CalcDistAndType(e1.d,d1,k1);
-          CalcDistAndType(e2.d,d2,k2);
+          CalcDistAndType(&e1,d1,k1);  // Pass ENTRY* for 256-bit support
+          CalcDistAndType(&e2,d2,k2);
           collisionFound = true;
         }
         memcpy(output + nbd,&e1,32);
@@ -218,13 +201,13 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
 
 }
 
+// Updated for 256-bit support
 int HashTable::Add(Int *x,Int *d,uint32_t type) {
 
   int128_t X;
-  int128_t D;
   uint64_t h;
-  Convert(x,d,type,&h,&X,&D);
-  ENTRY* e = CreateEntry(&X,&D);
+  Convert(x,&h,&X);  // Simplified - only converts position
+  ENTRY* e = CreateEntry(&X,d,(uint8_t)type);  // Store full distance and type
   return Add(h,e);
 
 }
@@ -246,16 +229,11 @@ int HashTable::Add(uint64_t h,int128_t *x,int128_t *d) {
 
 }
 
-void HashTable::CalcDistAndType(int128_t d,Int* kDist,uint32_t* kType) {
+// Simplified for 256-bit support - distance and type stored separately
+void HashTable::CalcDistAndType(ENTRY* e,Int* kDist,uint32_t* kType) {
 
-  *kType = (d.i64[1] & 0x4000000000000000ULL) != 0;
-  int sign = (d.i64[1] & 0x8000000000000000ULL) != 0;
-  d.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
-
-  kDist->SetInt32(0);
-  kDist->bits64[0] = d.i64[0];
-  kDist->bits64[1] = d.i64[1];
-  if(sign) kDist->ModNegK1order();
+  kDist->Set(&e->d);  // Copy full 256-bit distance
+  *kType = e->type;   // Get type directly
 
 }
 
@@ -293,7 +271,7 @@ int HashTable::Add(uint64_t h,ENTRY* e) {
       }
 
       // Collision
-      CalcDistAndType(GET(h,mi)->d , &kDist, &kType);
+      CalcDistAndType(GET(h,mi), &kDist, &kType);  // Pass ENTRY* for 256-bit support
       return ADD_COLLISION;
 
     } else {
