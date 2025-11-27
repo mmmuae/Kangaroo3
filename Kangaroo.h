@@ -220,7 +220,7 @@ private:
   double CalculateETAForProbability(double targetProb, uint64_t currentDPs, double currentRate);
 
   // Graduated DP Strategy methods
-  void InitGraduatedDP(double actualKeyRate = 0.0);
+  void InitGraduatedDP();
   void UpdatePhase(double currentTime);
   uint32_t GetCurrentDPSize();
   void UpdateBucketStatistics(double currentTime);
@@ -359,7 +359,6 @@ private:
 
   // Current graduated DP state
   SearchPhase currentPhase;
-  bool gradDPInitialized;          // Track if GDP has been initialized
   double phaseStartTime;
   double phase1EndTime;
   double phase2EndTime;

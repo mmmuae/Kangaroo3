@@ -321,7 +321,7 @@ double Kangaroo::CalculateETAForProbability(double targetProb, uint64_t currentD
 // ============================================================================
 
 // Initialize graduated DP strategy
-void Kangaroo::InitGraduatedDP(double actualKeyRate) {
+void Kangaroo::InitGraduatedDP() {
 
   if(!gradConfig.enabled) {
     currentPhase = PHASE_DISABLED;
@@ -341,7 +341,7 @@ void Kangaroo::InitGraduatedDP(double actualKeyRate) {
   // Reserve space for hotspots
   topHotspots.reserve(gradConfig.topHotspotsCount);
 
-  // Calculate phase end times - use manual duration if specified, otherwise use actual performance
+  // Calculate phase end times - use manual duration if specified, otherwise estimate
   double totalDuration;  // in seconds
 
   if(gradConfig.manualDuration > 0.0) {
@@ -349,15 +349,9 @@ void Kangaroo::InitGraduatedDP(double actualKeyRate) {
     totalDuration = gradConfig.manualDuration * 3600.0;  // Convert to seconds
     ::printf("\nUsing MANUAL duration: %.1f hours\n", gradConfig.manualDuration);
   } else {
-    // Use actual measured key rate to calculate expected time
-    if(actualKeyRate > 0.0) {
-      totalDuration = expectedNbOp / actualKeyRate;
-      ::printf("\nUsing ESTIMATED duration based on measured performance: %.2f hours\n", totalDuration / 3600.0);
-    } else {
-      // Fallback if no key rate available yet (shouldn't happen)
-      totalDuration = expectedNbOp / 1e6;
-      ::printf("\nUsing ESTIMATED duration (no performance data yet): %.2f hours\n", totalDuration / 3600.0);
-    }
+    // Estimate based on expected operations (for small puzzles)
+    totalDuration = expectedNbOp / 1e6;  // Rough estimate
+    ::printf("\nUsing ESTIMATED duration: %.2f hours\n", totalDuration / 3600.0);
   }
 
   phase1EndTime = startTime + (totalDuration * gradConfig.phase1Duration);
@@ -376,22 +370,16 @@ void Kangaroo::InitGraduatedDP(double actualKeyRate) {
       (std::string(GetTimeStr(totalDuration)) + " (manual)").c_str() :
       (std::string(GetTimeStr(totalDuration)) + " (estimated)").c_str());
   ::printf("╠════════════════════════════════════════════════════════════════════════╣\n");
-
-  // Calculate actual DP bit counts for each phase
-  int32_t phase1DP = (int32_t)dpSize + gradConfig.phase1DPBits;
-  int32_t phase2DP = (int32_t)dpSize + gradConfig.phase2DPBits;
-  int32_t phase3DP = (int32_t)dpSize + gradConfig.phase3DPBits;
-
-  ::printf("║  Phase 1: WIDE NET      - %.0f%% of time - DP: %d bits (FAST)          ║\n",
-    gradConfig.phase1Duration * 100, phase1DP);
+  ::printf("║  Phase 1: WIDE NET      - %.0f%% of time - DP bits: base%+d (FAST)      ║\n",
+    gradConfig.phase1Duration * 100, gradConfig.phase1DPBits);
   ::printf("║           Duration: %-49s ║\n",
     GetTimeStr(totalDuration * gradConfig.phase1Duration).c_str());
-  ::printf("║  Phase 2: FOCUSED       - %.0f%% of time - DP: %d bits (ADAPTIVE)      ║\n",
-    gradConfig.phase2Duration * 100, phase2DP);
+  ::printf("║  Phase 2: FOCUSED       - %.0f%% of time - DP bits: base%+d (ADAPTIVE)  ║\n",
+    gradConfig.phase2Duration * 100, gradConfig.phase2DPBits);
   ::printf("║           Duration: %-49s ║\n",
     GetTimeStr(totalDuration * gradConfig.phase2Duration).c_str());
-  ::printf("║  Phase 3: PRECISION     - %.0f%% of time - DP: %d bits (TARGETED)      ║\n",
-    gradConfig.phase3Duration * 100, phase3DP);
+  ::printf("║  Phase 3: PRECISION     - %.0f%% of time - DP bits: base%+d (TARGETED)  ║\n",
+    gradConfig.phase3Duration * 100, gradConfig.phase3DPBits);
   ::printf("║           Duration: %-49s ║\n",
     GetTimeStr(totalDuration * gradConfig.phase3Duration).c_str());
   ::printf("╠════════════════════════════════════════════════════════════════════════╣\n");
@@ -768,23 +756,8 @@ void Kangaroo::ProcessServer() {
 
     t1 = Timer::get_tick();
 
-    // Initialize Graduated DP Strategy for server mode
-    // Server mode should use manual duration (-gdp-time flag)
-    if(gradConfig.enabled && !gradDPInitialized && !endOfSearch) {
-      if((t1 - startTime) >= 10.0) {
-        if(gradConfig.manualDuration > 0.0) {
-          InitGraduatedDP(0.0);  // Server mode uses manual duration only
-          gradDPInitialized = true;
-        } else {
-          // No manual duration specified in server mode, disable GDP
-          ::printf("\nWARNING: Graduated DP requires -gdp-time flag in server mode. Disabling.\n");
-          gradConfig.enabled = false;
-        }
-      }
-    }
-
     // Update Graduated DP Strategy phases and bucket statistics
-    if(gradConfig.enabled && gradDPInitialized && !endOfSearch) {
+    if(gradConfig.enabled && !endOfSearch) {
       UpdatePhase(t1);  // Check for phase transitions
 
       // Update bucket stats every 5 seconds
@@ -805,10 +778,7 @@ void Kangaroo::ProcessServer() {
       double gap128 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
       double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
       double currentGap = gap128 / 1000000000.0;
-      // Check if lowestGap is still at initial max value (not yet set)
-      bool lowestGapValid = !(lowestGap.i64[0] == 0xFFFFFFFFFFFFFFFFULL &&
-                              lowestGap.i64[1] == 0x3FFFFFFFFFFFFFFFULL);
-      double lowest = lowestGapValid ? (lowestGap128 / 1000000000.0) : 0.0;
+      double lowest = lowestGap128 / 1000000000.0;
 
       // First line - original progress bar
       printf("\r[Client %d][Kang 2^%.2f][DP Count 2^%.2f/2^%.2f][Dead %.0f][T/W:%.3f][Gap:%.1f][L.Gap:%.1f][%s][%s]  ",
@@ -945,6 +915,19 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
     t1 = Timer::get_tick();
 
+    // Update Graduated DP Strategy phases and bucket statistics
+    if(gradConfig.enabled && !endOfSearch) {
+      UpdatePhase(t1);  // Check for phase transitions
+
+      // Update bucket stats every 5 seconds
+      if((t1 - lastHotspotUpdate) > 5.0) {
+        UpdateBucketStatistics(t1);
+        CalculateHotspotScores();
+        UpdateTopHotspots();
+        lastHotspotUpdate = t1;
+      }
+    }
+
     keyRate = (double)(count - lastCount) / (t1 - t0);
     gpuKeyRate = (double)(gpuCount - lastGPUCount) / (t1 - t0);
     lastkeyRate[filterPos%FILTER_SIZE] = keyRate;
@@ -961,28 +944,6 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
     avgGpuKeyRate /= (double)(nbSample);
     double expectedTime = expectedNbOp / avgKeyRate;
 
-    // Initialize Graduated DP Strategy once we have stable key rate measurements
-    // Wait for at least 10 seconds and 3 samples for accurate estimation
-    if(gradConfig.enabled && !gradDPInitialized && !endOfSearch) {
-      if((t1 - startTime) >= 10.0 && nbSample >= 3 && avgKeyRate > 0.0) {
-        InitGraduatedDP(avgKeyRate);
-        gradDPInitialized = true;
-      }
-    }
-
-    // Update Graduated DP Strategy phases and bucket statistics
-    if(gradConfig.enabled && gradDPInitialized && !endOfSearch) {
-      UpdatePhase(t1);  // Check for phase transitions
-
-      // Update bucket stats every 5 seconds
-      if((t1 - lastHotspotUpdate) > 5.0) {
-        UpdateBucketStatistics(t1);
-        CalculateHotspotScores();
-        UpdateTopHotspots();
-        lastHotspotUpdate = t1;
-      }
-    }
-
     // Display stats
     if(isAlive(params) && !endOfSearch) {
       // Calculate tame/wild ratio (1.000 = 50/50)
@@ -993,10 +954,7 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       double gap128 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
       double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
       double currentGap = gap128 / 1000000000.0;
-      // Check if lowestGap is still at initial max value (not yet set)
-      bool lowestGapValid = !(lowestGap.i64[0] == 0xFFFFFFFFFFFFFFFFULL &&
-                              lowestGap.i64[1] == 0x3FFFFFFFFFFFFFFFULL);
-      double lowest = lowestGapValid ? (lowestGap128 / 1000000000.0) : 0.0;
+      double lowest = lowestGap128 / 1000000000.0;
 
       // First line - original progress bar
       if(clientMode) {
