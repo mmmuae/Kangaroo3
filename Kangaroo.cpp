@@ -363,23 +363,6 @@ bool Kangaroo::AddToTable(Int *pos,Int *dist,uint32_t kType) {
     } else {
       wildCount++;
     }
-
-    // Track GDP phase-specific DP counts
-    if(gradConfig.enabled) {
-      switch(currentPhase) {
-        case PHASE_WIDE_NET:
-          phase1DPCount++;
-          break;
-        case PHASE_FOCUSED:
-          phase2DPCount++;
-          break;
-        case PHASE_PRECISION:
-          phase3DPCount++;
-          break;
-        default:
-          break;
-      }
-    }
   }
 
   return addStatus == ADD_OK;
@@ -405,23 +388,6 @@ bool Kangaroo::AddToTable(uint64_t h,int128_t *x,int128_t *d) {
       tameCount++;
     } else {
       wildCount++;
-    }
-
-    // Track GDP phase-specific DP counts
-    if(gradConfig.enabled) {
-      switch(currentPhase) {
-        case PHASE_WIDE_NET:
-          phase1DPCount++;
-          break;
-        case PHASE_FOCUSED:
-          phase2DPCount++;
-          break;
-        case PHASE_PRECISION:
-          phase3DPCount++;
-          break;
-        default:
-          break;
-      }
     }
   }
 

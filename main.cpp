@@ -86,7 +86,7 @@ void printUsage() {
   printf(" -gdp-p1-pct <0.0-1.0>: Phase 1 time percentage (default: 0.25 = 25%%)\n");
   printf(" -gdp-p2-pct <0.0-1.0>: Phase 2 time percentage (default: 0.50 = 50%%)\n");
   printf(" -gdp-p3-pct <0.0-1.0>: Phase 3 time percentage (default: 0.25 = 25%%)\n");
-  printf(" -gdp-enabled: Enable graduated DP strategy (3-phase adaptive search)\n");
+  printf(" -gdp-disable: Disable graduated DP strategy (use traditional single-phase)\n");
   exit(0);
 
 }
@@ -339,7 +339,7 @@ int main(int argc, char* argv[]) {
   double gdpP1Pct = 0.25;         // Phase 1 percentage of time
   double gdpP2Pct = 0.50;         // Phase 2 percentage of time
   double gdpP3Pct = 0.25;         // Phase 3 percentage of time
-  bool gdpEnabled = false;        // Enable graduated DP strategy
+  bool gdpDisable = false;        // Disable graduated DP strategy
 
   while (a < argc) {
 
@@ -512,8 +512,8 @@ int main(int argc, char* argv[]) {
       CHECKARG("-gdp-p3-pct",1);
       gdpP3Pct = getDouble("gdpP3Pct",argv[a]);
       a++;
-    } else if(strcmp(argv[a],"-gdp-enabled") == 0) {
-      gdpEnabled = true;
+    } else if(strcmp(argv[a],"-gdp-disable") == 0) {
+      gdpDisable = true;
       a++;
     } else if(a == argc - 1) {
       configFile = string(argv[a]);
@@ -615,7 +615,7 @@ int main(int argc, char* argv[]) {
                              maxStep,wtimeout,port,ntimeout,serverIP,outputFile,splitWorkFile);
 
   // Configure Graduated DP Strategy
-  v->gradConfig.enabled = gdpEnabled;
+  v->gradConfig.enabled = !gdpDisable;
   v->gradConfig.manualDuration = gdpTime;
   v->gradConfig.phase1Duration = gdpP1Pct;
   v->gradConfig.phase2Duration = gdpP2Pct;
