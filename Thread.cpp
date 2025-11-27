@@ -321,7 +321,7 @@ double Kangaroo::CalculateETAForProbability(double targetProb, uint64_t currentD
 // ============================================================================
 
 // Initialize graduated DP strategy
-void Kangaroo::InitGraduatedDP(double actualKeyRate, TH_PARAM *threads, int nbThread) {
+void Kangaroo::InitGraduatedDP(double actualKeyRate) {
 
   if(!gradConfig.enabled) {
     currentPhase = PHASE_DISABLED;
@@ -410,16 +410,16 @@ void Kangaroo::InitGraduatedDP(double actualKeyRate, TH_PARAM *threads, int nbTh
   ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
   ::printf("\n");
 
-  // Apply Phase 1 DP mask immediately (updates CPU + GPU)
+  // Apply Phase 1 DP mask immediately
   uint32_t phase1DPSize = GetCurrentDPSize();
-  UpdateDPMask(phase1DPSize, threads, nbThread);
+  SetDP(phase1DPSize);
 
   ResetPhaseStatistics();
 }
 
 // Update current phase based on time elapsed
 // Returns true if a phase transition occurred (triggers kangaroo reseeding)
-bool Kangaroo::UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread) {
+bool Kangaroo::UpdatePhase(double currentTime) {
 
   if(!gradConfig.enabled) return false;
 
@@ -435,6 +435,10 @@ bool Kangaroo::UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread) 
       phase2Completed = true;
       phaseChanged = true;
 
+      // Apply new DP mask for Phase 3
+      uint32_t newDPSize = GetCurrentDPSize();
+      SetDP(newDPSize);
+
       ::printf("\n");
       ::printf("╔════════════════════════════════════════════════════════════════════════╗\n");
       ::printf("║  ⚡ PHASE TRANSITION: FOCUSED → PRECISION                              ║\n");
@@ -442,11 +446,8 @@ bool Kangaroo::UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread) 
         (unsigned long long)phase2DPCount, GetPhaseProgress() * 100);
       ::printf("║  Entering Phase 3: Precision Strike on hottest %u buckets            ║\n",
         (topHotspots.size() < 20) ? (uint32_t)topHotspots.size() : 20);
-
-      // Apply new DP mask for Phase 3 (updates CPU + GPU)
-      uint32_t newDPSize = GetCurrentDPSize();
-      UpdateDPMask(newDPSize, threads, nbThread);  // nbThread already includes CPU+GPU
-
+      ::printf("║  DP Mask: %u bits (ultra-dense coverage in hot zones)                 ║\n",
+        newDPSize);
       ResetPhaseStatistics();
     }
   } else if(currentTime >= phase1EndTime && !phase1Completed) {
@@ -455,6 +456,10 @@ bool Kangaroo::UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread) 
       phase1Completed = true;
       phaseChanged = true;
 
+      // Apply new DP mask for Phase 2
+      uint32_t newDPSize = GetCurrentDPSize();
+      SetDP(newDPSize);
+
       ::printf("\n");
       ::printf("╔════════════════════════════════════════════════════════════════════════╗\n");
       ::printf("║  ⚡ PHASE TRANSITION: WIDE NET → FOCUSED                               ║\n");
@@ -462,46 +467,20 @@ bool Kangaroo::UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread) 
         (unsigned long long)phase1DPCount, GetPhaseProgress() * 100);
       ::printf("║  Identified %u hotspots for focused search                            ║\n",
         (uint32_t)topHotspots.size());
-      ::printf("║  Hotspot bias: %.0f%% of spawns in hot zones                          ║\n",
-        gradConfig.hotspotBiasPhase2 * 100);
-
-      // Apply new DP mask for Phase 2 (updates CPU + GPU)
-      uint32_t newDPSize = GetCurrentDPSize();
-      UpdateDPMask(newDPSize, threads, nbThread);  // nbThread already includes CPU+GPU
-
+      ::printf("║  DP Mask: %u bits with %.0f%% spawning in hotspots                     ║\n",
+        newDPSize, gradConfig.hotspotBiasPhase2 * 100);
       ResetPhaseStatistics();
     }
   }
 
-  // Update DP size if phase changed (shouldn't happen, but safety check)
-  if(oldPhase != currentPhase && !phaseChanged) {
+  // Update DP size if phase changed
+  if(oldPhase != currentPhase) {
     uint32_t newDPSize = GetCurrentDPSize();
-    UpdateDPMask(newDPSize, threads, nbThread);  // nbThread already includes CPU+GPU
+    SetDP(newDPSize);
     phaseChanged = true;
   }
 
   return phaseChanged;
-}
-
-// Update DP mask for all threads (CPU and GPU)
-void Kangaroo::UpdateDPMask(uint32_t newDPSize, TH_PARAM *threads, int nbThread) {
-
-  // Update CPU-side mask
-  SetDP(newDPSize);
-
-#ifdef WITHGPU
-  // Update GPU kernels with new mask (if threads are available)
-  if(threads != nullptr) {
-    for(int t = 0; t < nbThread; t++) {
-      if(threads[t].gpuEngine != nullptr) {
-        GPUEngine *gpu = (GPUEngine *)threads[t].gpuEngine;
-        gpu->SetParams(dMask, jumpDistance, jumpPointx, jumpPointy);
-      }
-    }
-  }
-#endif
-
-  ::printf("║  Updated DP mask to %u bits for all threads                              ║\n", newDPSize);
 }
 
 // Get current DP size based on phase
@@ -727,14 +706,9 @@ void Kangaroo::RespawnKangaroosToHotspots(double respawnPercentage, TH_PARAM *th
   uint64_t totalRespawned = 0;
 
   // Now it's safe to modify thread kangaroo data
-  // Respawn kangaroos in each CPU/GPU thread
+  // Respawn kangaroos in each CPU thread
   for(int t = 0; t < nbThread; t++) {
-    if(threads[t].isRunning && threads[t].nbKangaroo > 0) {
-      // Skip if kangaroo arrays not allocated (GPU threads may free them if not saving)
-      if(threads[t].px == nullptr || threads[t].py == nullptr || threads[t].distance == nullptr) {
-        continue;
-      }
-
+    if(threads[t].isRunning) {
       uint64_t nbToRespawn = (uint64_t)(threads[t].nbKangaroo * respawnPercentage);
 
       for(uint64_t i = 0; i < nbToRespawn; i++) {
@@ -779,14 +753,6 @@ void Kangaroo::RespawnKangaroosToHotspots(double respawnPercentage, TH_PARAM *th
 
         totalRespawned++;
       }
-
-#ifdef WITHGPU
-      // For GPU threads, send updated kangaroos back to GPU
-      if(threads[t].gpuEngine != nullptr) {
-        GPUEngine *gpu = (GPUEngine *)threads[t].gpuEngine;
-        gpu->SetKangaroos(threads[t].px, threads[t].py, threads[t].distance);
-      }
-#endif
     }
   }
 
@@ -920,7 +886,7 @@ void Kangaroo::ProcessServer() {
     if(gradConfig.enabled && !gradDPInitialized && !endOfSearch) {
       if((t1 - startTime) >= 10.0) {
         if(gradConfig.manualDuration > 0.0) {
-          InitGraduatedDP(0.0, nullptr, 0);  // Server mode uses manual duration only, no local threads
+          InitGraduatedDP(0.0);  // Server mode uses manual duration only
           gradDPInitialized = true;
         } else {
           // No manual duration specified in server mode, disable GDP
@@ -932,8 +898,7 @@ void Kangaroo::ProcessServer() {
 
     // Update Graduated DP Strategy phases and bucket statistics
     if(gradConfig.enabled && gradDPInitialized && !endOfSearch) {
-      // Note: ProcessServer doesn't have local threads, pass nullptr
-      bool phaseTransitioned = UpdatePhase(t1, nullptr, 0);  // Check for phase transitions
+      bool phaseTransitioned = UpdatePhase(t1);  // Check for phase transitions
 
       // Note: ProcessServer doesn't have local threads to reseed
       // Phase transitions are tracked but respawning happens on clients
@@ -1123,22 +1088,20 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
     // Wait for at least 10 seconds and 3 samples for accurate estimation
     if(gradConfig.enabled && !gradDPInitialized && !endOfSearch) {
       if((t1 - startTime) >= 10.0 && nbSample >= 3 && avgKeyRate > 0.0) {
-        int totalThreads = nbCPUThread + nbGPUThread;
-        InitGraduatedDP(avgKeyRate, params, totalThreads);
+        InitGraduatedDP(avgKeyRate);
         gradDPInitialized = true;
       }
     }
 
     // Update Graduated DP Strategy phases and bucket statistics
     if(gradConfig.enabled && gradDPInitialized && !endOfSearch) {
-      int totalThreads = nbCPUThread + nbGPUThread;
-      bool phaseTransitioned = UpdatePhase(t1, params, totalThreads);  // Check for phase transitions
+      bool phaseTransitioned = UpdatePhase(t1);  // Check for phase transitions
 
       // If phase transitioned, reseed kangaroos to hotspots
       if(phaseTransitioned && !topHotspots.empty()) {
         // Reseed percentage based on phase
         double respawnPct = (currentPhase == PHASE_FOCUSED) ? 0.30 : 0.50;  // 30% for Phase 2, 50% for Phase 3
-        RespawnKangaroosToHotspots(respawnPct, params, totalThreads);  // Include GPU threads!
+        RespawnKangaroosToHotspots(respawnPct, params, nbCPUThread);
         ::printf("╚════════════════════════════════════════════════════════════════════════╝\n");
         ::printf("\n");
       }

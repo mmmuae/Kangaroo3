@@ -69,7 +69,6 @@ typedef struct {
   int  gridSizeX;
   int  gridSizeY;
   int  gpuId;
-  void *gpuEngine;  // GPUEngine pointer (stored as void* to avoid header dependency)
 #endif
 
   Int *px; // Kangaroo position
@@ -221,10 +220,9 @@ private:
   double CalculateETAForProbability(double targetProb, uint64_t currentDPs, double currentRate);
 
   // Graduated DP Strategy methods
-  void InitGraduatedDP(double actualKeyRate, TH_PARAM *threads, int nbThread);
-  bool UpdatePhase(double currentTime, TH_PARAM *threads, int nbThread);  // Returns true if phase transitioned
+  void InitGraduatedDP(double actualKeyRate = 0.0);
+  bool UpdatePhase(double currentTime);  // Returns true if phase transitioned
   uint32_t GetCurrentDPSize();
-  void UpdateDPMask(uint32_t newDPSize, TH_PARAM *threads, int nbThread);  // Update DP for CPU+GPU
   void UpdateBucketStatistics(double currentTime);
   void CalculateHotspotScores();
   void UpdateTopHotspots();
