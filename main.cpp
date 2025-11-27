@@ -75,18 +75,6 @@ void printUsage() {
   printf(" -l: List cuda enabled devices\n");
   printf(" -check: Check GPU kernel vs CPU\n");
   printf(" inFile: intput configuration file\n");
-  printf("\n");
-  printf("Graduated DP Strategy (3-phase adaptive search):\n");
-  printf(" -gdp-time <hours>: Manual duration for graduated DP phases (default: use estimated time)\n");
-  printf(" -gdp-p1-bits <int>: Phase 1 DP bit adjustment (default: -4, aggressive)\n");
-  printf(" -gdp-p2-bits <int>: Phase 2 DP bit adjustment (default: 0, normal)\n");
-  printf(" -gdp-p3-bits <int>: Phase 3 DP bit adjustment (default: +4, conservative)\n");
-  printf(" -gdp-bias2 <0.0-1.0>: Phase 2 hotspot spawn bias (default: 0.70 = 70%%)\n");
-  printf(" -gdp-bias3 <0.0-1.0>: Phase 3 hotspot spawn bias (default: 0.95 = 95%%)\n");
-  printf(" -gdp-p1-pct <0.0-1.0>: Phase 1 time percentage (default: 0.25 = 25%%)\n");
-  printf(" -gdp-p2-pct <0.0-1.0>: Phase 2 time percentage (default: 0.50 = 50%%)\n");
-  printf(" -gdp-p3-pct <0.0-1.0>: Phase 3 time percentage (default: 0.25 = 25%%)\n");
-  printf(" -gdp-disable: Disable graduated DP strategy (use traditional single-phase)\n");
   exit(0);
 
 }
@@ -329,18 +317,6 @@ int main(int argc, char* argv[]) {
   string endHexArg;
   string pubkeyArg;
 
-  // Graduated DP Strategy parameters
-  double gdpTime = 0.0;           // Manual duration in hours (0 = use expected time)
-  int32_t gdpP1Bits = -4;         // Phase 1 DP bit adjustment
-  int32_t gdpP2Bits = 0;          // Phase 2 DP bit adjustment
-  int32_t gdpP3Bits = 4;          // Phase 3 DP bit adjustment
-  double gdpBias2 = 0.70;         // Phase 2 hotspot bias
-  double gdpBias3 = 0.95;         // Phase 3 hotspot bias
-  double gdpP1Pct = 0.25;         // Phase 1 percentage of time
-  double gdpP2Pct = 0.50;         // Phase 2 percentage of time
-  double gdpP3Pct = 0.25;         // Phase 3 percentage of time
-  bool gdpDisable = false;        // Disable graduated DP strategy
-
   while (a < argc) {
 
     if(strcmp(argv[a], "-t") == 0) {
@@ -476,45 +452,6 @@ int main(int argc, char* argv[]) {
       CHECKARG("--pubkey",1);
       pubkeyArg = stripHexPrefix(string(argv[a]));
       a++;
-    } else if(strcmp(argv[a],"-gdp-time") == 0) {
-      CHECKARG("-gdp-time",1);
-      gdpTime = getDouble("gdpTime",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-p1-bits") == 0) {
-      CHECKARG("-gdp-p1-bits",1);
-      gdpP1Bits = getInt("gdpP1Bits",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-p2-bits") == 0) {
-      CHECKARG("-gdp-p2-bits",1);
-      gdpP2Bits = getInt("gdpP2Bits",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-p3-bits") == 0) {
-      CHECKARG("-gdp-p3-bits",1);
-      gdpP3Bits = getInt("gdpP3Bits",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-bias2") == 0) {
-      CHECKARG("-gdp-bias2",1);
-      gdpBias2 = getDouble("gdpBias2",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-bias3") == 0) {
-      CHECKARG("-gdp-bias3",1);
-      gdpBias3 = getDouble("gdpBias3",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-p1-pct") == 0) {
-      CHECKARG("-gdp-p1-pct",1);
-      gdpP1Pct = getDouble("gdpP1Pct",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-p2-pct") == 0) {
-      CHECKARG("-gdp-p2-pct",1);
-      gdpP2Pct = getDouble("gdpP2Pct",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-p3-pct") == 0) {
-      CHECKARG("-gdp-p3-pct",1);
-      gdpP3Pct = getDouble("gdpP3Pct",argv[a]);
-      a++;
-    } else if(strcmp(argv[a],"-gdp-disable") == 0) {
-      gdpDisable = true;
-      a++;
     } else if(a == argc - 1) {
       configFile = string(argv[a]);
       a++;
@@ -613,19 +550,6 @@ int main(int argc, char* argv[]) {
 
   Kangaroo *v = new Kangaroo(secp,dp,gpuEnable,workFile,iWorkFile,savePeriod,saveKangaroo,saveKangarooByServer,
                              maxStep,wtimeout,port,ntimeout,serverIP,outputFile,splitWorkFile);
-
-  // Configure Graduated DP Strategy
-  v->gradConfig.enabled = !gdpDisable;
-  v->gradConfig.manualDuration = gdpTime;
-  v->gradConfig.phase1Duration = gdpP1Pct;
-  v->gradConfig.phase2Duration = gdpP2Pct;
-  v->gradConfig.phase3Duration = gdpP3Pct;
-  v->gradConfig.phase1DPBits = gdpP1Bits;
-  v->gradConfig.phase2DPBits = gdpP2Bits;
-  v->gradConfig.phase3DPBits = gdpP3Bits;
-  v->gradConfig.hotspotBiasPhase2 = gdpBias2;
-  v->gradConfig.hotspotBiasPhase3 = gdpBias3;
-
   ScopedTempFile tempFile;
 
   if(checkFlag) {
