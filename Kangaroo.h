@@ -177,11 +177,6 @@ private:
   std::string GetTimeStr(double s);
   bool Output(Int* pk,char sInfo,int sType);
 
-  // LZB analysis helpers
-  uint32_t CountLeadingZeroBits(int128_t *val);
-  void UpdateHotBuckets(uint32_t bucketId, uint32_t lzb, int128_t *xorDiff);
-  double CalculateCollisionProbability(uint64_t numDPs);
-  double CalculateETAForProbability(double targetProb, uint64_t currentDPs, double currentRate);
 
   // Backup stuff
   void SaveWork(std::string fileName,FILE *f,int type,uint64_t totalCount,double totalTime);
@@ -260,22 +255,9 @@ private:
   int128_t minGap;
   int128_t lowestGap;
 
-  // Leading Zero Bit (LZB) analysis - position-based proximity detection
-  uint32_t maxLeadingZeroBits;    // Maximum LZB seen across all buckets
-  int128_t closestXorDiff;        // XOR difference of closest TAME/WILD pair
-  uint32_t maxLZBBucket;          // Bucket ID containing max LZB pair
-
-  // Per-bucket hotspot tracking
-  struct HotBucket {
-    uint32_t bucketId;
-    uint32_t lzb;
-    int128_t xorDiff;
-
-    bool operator<(const HotBucket& other) const {
-      return lzb > other.lzb; // Sort descending by LZB
-    }
-  };
-  std::vector<HotBucket> topHotBuckets;  // Top 5 hottest buckets
+  // DP insertion tracking for progress display
+  uint64_t lastDPCount;           // Last DP count for rate calculation
+  double lastDPTime;              // Last time DP rate was calculated
 
   std::vector<Point> keysToSearch;
   Point keyToSearch;

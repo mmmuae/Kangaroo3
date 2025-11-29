@@ -162,160 +162,6 @@ string Kangaroo::GetTimeStr(double dTime) {
 
 }
 
-// ============================================================================
-// LZB (Leading Zero Bits) Analysis Helper Functions
-// ============================================================================
-
-// Count leading zero bits in a 128-bit value
-// Returns number of consecutive zero bits from MSB
-uint32_t Kangaroo::CountLeadingZeroBits(int128_t *val) {
-
-  uint32_t count = 0;
-
-  // Check high 64 bits first
-  if(val->i64[1] == 0) {
-    count = 64;
-    // High part is all zeros, check low part
-    if(val->i64[0] == 0) {
-      return 128; // Entire value is zero
-    }
-    // Count leading zeros in low part
-    uint64_t v = val->i64[0];
-    if(v == 0) return 128;
-
-    // Binary search for leading zeros in 64-bit value
-    if((v & 0xFFFFFFFF00000000ULL) == 0) { count += 32; v <<= 32; }
-    if((v & 0xFFFF000000000000ULL) == 0) { count += 16; v <<= 16; }
-    if((v & 0xFF00000000000000ULL) == 0) { count += 8;  v <<= 8;  }
-    if((v & 0xF000000000000000ULL) == 0) { count += 4;  v <<= 4;  }
-    if((v & 0xC000000000000000ULL) == 0) { count += 2;  v <<= 2;  }
-    if((v & 0x8000000000000000ULL) == 0) { count += 1; }
-
-  } else {
-    // Count leading zeros in high part
-    uint64_t v = val->i64[1];
-
-    // Binary search for leading zeros in 64-bit value
-    if((v & 0xFFFFFFFF00000000ULL) == 0) { count += 32; v <<= 32; }
-    if((v & 0xFFFF000000000000ULL) == 0) { count += 16; v <<= 16; }
-    if((v & 0xFF00000000000000ULL) == 0) { count += 8;  v <<= 8;  }
-    if((v & 0xF000000000000000ULL) == 0) { count += 4;  v <<= 4;  }
-    if((v & 0xC000000000000000ULL) == 0) { count += 2;  v <<= 2;  }
-    if((v & 0x8000000000000000ULL) == 0) { count += 1; }
-  }
-
-  return count;
-}
-
-// Update the top 5 hottest buckets list
-// Must be called with ghMutex locked
-void Kangaroo::UpdateHotBuckets(uint32_t bucketId, uint32_t lzb, int128_t *xorDiff) {
-
-  // Create new hot bucket entry
-  HotBucket newBucket;
-  newBucket.bucketId = bucketId;
-  newBucket.lzb = lzb;
-  newBucket.xorDiff.i64[0] = xorDiff->i64[0];
-  newBucket.xorDiff.i64[1] = xorDiff->i64[1];
-
-  // Check if this bucket is already in the list
-  bool found = false;
-  for(size_t i = 0; i < topHotBuckets.size(); i++) {
-    if(topHotBuckets[i].bucketId == bucketId) {
-      // Update if this is a better (higher) LZB for this bucket
-      if(lzb > topHotBuckets[i].lzb) {
-        topHotBuckets[i].lzb = lzb;
-        topHotBuckets[i].xorDiff.i64[0] = xorDiff->i64[0];
-        topHotBuckets[i].xorDiff.i64[1] = xorDiff->i64[1];
-      }
-      found = true;
-      break;
-    }
-  }
-
-  if(!found) {
-    // Add new bucket
-    topHotBuckets.push_back(newBucket);
-  }
-
-  // Sort descending by LZB (highest first)
-  std::sort(topHotBuckets.begin(), topHotBuckets.end());
-
-  // Keep only top 5
-  if(topHotBuckets.size() > 5) {
-    topHotBuckets.resize(5);
-  }
-}
-
-// Calculate collision probability based on birthday paradox
-// P(collision) = 1 - exp(-N^2 / (2 * M))
-// where N = number of DPs, M = search space size
-double Kangaroo::CalculateCollisionProbability(uint64_t numDPs) {
-
-  if(numDPs == 0) return 0.0;
-
-  // Use rangeWidth as search space M
-  // For large numbers, use approximation to avoid overflow
-  double N = (double)numDPs;
-  double M = rangeWidth.ToDouble();
-
-  if(M <= 0.0) return 0.0;
-
-  // Calculate -N^2 / (2M)
-  double exponent = -(N * N) / (2.0 * M);
-
-  // For very small exponents (large negative), exp() approaches 0, so P approaches 1
-  if(exponent < -100.0) return 1.0;
-
-  // For very large exponents (close to 0), use approximation
-  if(exponent > -0.001) {
-    // P ≈ N^2 / (2M) for small probabilities
-    return (N * N) / (2.0 * M);
-  }
-
-  // Normal case
-  double prob = 1.0 - exp(exponent);
-  return (prob < 0.0) ? 0.0 : ((prob > 1.0) ? 1.0 : prob);
-}
-
-// Calculate ETA to reach a target collision probability
-// Returns time in seconds, or -1.0 if target already reached or invalid
-double Kangaroo::CalculateETAForProbability(double targetProb, uint64_t currentDPs, double currentRate) {
-
-  if(targetProb <= 0.0 || targetProb >= 1.0) return -1.0;
-  if(currentRate <= 0.0) return -1.0;
-
-  // Check if we've already reached the target
-  double currentProb = CalculateCollisionProbability(currentDPs);
-  if(currentProb >= targetProb) return 0.0;
-
-  // Solve for N where P(N) = targetProb
-  // P = 1 - exp(-N^2 / (2M))
-  // targetProb = 1 - exp(-N^2 / (2M))
-  // exp(-N^2 / (2M)) = 1 - targetProb
-  // -N^2 / (2M) = ln(1 - targetProb)
-  // N^2 = -2M * ln(1 - targetProb)
-  // N = sqrt(-2M * ln(1 - targetProb))
-
-  double M = rangeWidth.ToDouble();
-  if(M <= 0.0) return -1.0;
-
-  double logTerm = log(1.0 - targetProb);
-  if(logTerm >= 0.0) return -1.0; // Invalid
-
-  double targetN = sqrt(-2.0 * M * logTerm);
-
-  if(targetN <= (double)currentDPs) return 0.0;
-
-  // Calculate remaining DPs needed
-  double remainingDPs = targetN - (double)currentDPs;
-
-  // Calculate time based on current rate
-  double timeSeconds = remainingDPs / currentRate;
-
-  return timeSeconds;
-}
-
 // Wait for end of server and dispay stats
 void Kangaroo::ProcessServer() {
 
@@ -390,41 +236,29 @@ void Kangaroo::ProcessServer() {
         hashTable.GetSizeInfo().c_str()
         );
 
-      // Second line - LZB analysis and collision probability
-      uint64_t numDPs = hashTable.GetNbItem();
-      double collisionProb = CalculateCollisionProbability(numDPs);
+      // Second line - DP insertion metrics
+      uint64_t currentDPs = hashTable.GetNbItem();
+      double currentTime = t1 - startTime;
 
-      // Calculate expected max LZB based on birthday paradox
-      double expectedMaxLZB = (numDPs > 1) ? log2((double)numDPs * (double)numDPs / 2.0) : 0.0;
-
-      // Calculate 50% and 90% ETA
-      double dpRate = (t1 - startTime > 0) ? (double)numDPs / (t1 - startTime) : 0.0;
-      double eta50 = CalculateETAForProbability(0.50, numDPs, dpRate);
-      double eta90 = CalculateETAForProbability(0.90, numDPs, dpRate);
-
-      // Format hot buckets display
-      char hotBucketsStr[128] = "";
-      LOCK(ghMutex);
-      if(topHotBuckets.size() > 0) {
-        char temp[32];
-        strcpy(hotBucketsStr, "Hot:[");
-        for(size_t i = 0; i < topHotBuckets.size() && i < 3; i++) {
-          if(i > 0) strcat(hotBucketsStr, ",");
-          sprintf(temp, "0x%X(%u)", topHotBuckets[i].bucketId, topHotBuckets[i].lzb);
-          strcat(hotBucketsStr, temp);
+      // Calculate DP rate (using smoothed calculation)
+      double dpRate = 0.0;
+      if(currentTime > 0.0) {
+        // Calculate instantaneous rate based on change since last update
+        if(lastDPTime > 0.0 && (currentTime - lastDPTime) > 0.0) {
+          dpRate = (double)(currentDPs - lastDPCount) / (currentTime - lastDPTime);
+        } else {
+          // First time or no time elapsed, use average rate
+          dpRate = (double)currentDPs / currentTime;
         }
-        strcat(hotBucketsStr, "]");
       }
-      uint32_t localMaxLZB = maxLeadingZeroBits;
-      UNLOCK(ghMutex);
 
-      printf("\n\033[K[LZB:%u/%.0f][P:%.1f%%][50%%:%s][90%%:%s]%s  \033[F",
-        localMaxLZB,
-        expectedMaxLZB,
-        collisionProb * 100.0,
-        (eta50 >= 0) ? GetTimeStr(eta50).c_str() : "N/A",
-        (eta90 >= 0) ? GetTimeStr(eta90).c_str() : "N/A",
-        hotBucketsStr
+      // Update tracking variables for next iteration
+      lastDPCount = currentDPs;
+      lastDPTime = currentTime;
+
+      printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s]  \033[F",
+        (unsigned long long)currentDPs,
+        dpRate
         );
       fflush(stdout);
     }
@@ -543,43 +377,29 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
         );
       }
 
-      // Second line - LZB analysis and collision probability
-      uint64_t numDPs = hashTable.GetNbItem();
-      double collisionProb = CalculateCollisionProbability(numDPs);
-
-      // Calculate expected max LZB based on birthday paradox
-      double expectedMaxLZB = (numDPs > 1) ? log2((double)numDPs * (double)numDPs / 2.0) : 0.0;
-
-      // Calculate 50% and 90% ETA (use count rate, not DP rate for better estimation)
+      // Second line - DP insertion metrics
+      uint64_t currentDPs = hashTable.GetNbItem();
       double currentTime = t1 - startTime + offsetTime;
-      double countRate = (currentTime > 0) ? ((double)count + offsetCount) / currentTime : 0.0;
-      double dpRate = (currentTime > 0) ? (double)numDPs / currentTime : 0.0;
-      double eta50 = CalculateETAForProbability(0.50, numDPs, dpRate);
-      double eta90 = CalculateETAForProbability(0.90, numDPs, dpRate);
 
-      // Format hot buckets display
-      char hotBucketsStr[128] = "";
-      LOCK(ghMutex);
-      if(topHotBuckets.size() > 0) {
-        char temp[32];
-        strcpy(hotBucketsStr, "Hot:[");
-        for(size_t i = 0; i < topHotBuckets.size() && i < 3; i++) {
-          if(i > 0) strcat(hotBucketsStr, ",");
-          sprintf(temp, "0x%X(%u)", topHotBuckets[i].bucketId, topHotBuckets[i].lzb);
-          strcat(hotBucketsStr, temp);
+      // Calculate DP rate (using smoothed calculation)
+      double dpRate = 0.0;
+      if(currentTime > 0.0) {
+        // Calculate instantaneous rate based on change since last update
+        if(lastDPTime > 0.0 && (currentTime - lastDPTime) > 0.0) {
+          dpRate = (double)(currentDPs - lastDPCount) / (currentTime - lastDPTime);
+        } else {
+          // First time or no time elapsed, use average rate
+          dpRate = (double)currentDPs / currentTime;
         }
-        strcat(hotBucketsStr, "]");
       }
-      uint32_t localMaxLZB = maxLeadingZeroBits;
-      UNLOCK(ghMutex);
 
-      printf("\n\033[K[LZB:%u/%.0f][P:%.1f%%][50%%:%s][90%%:%s]%s  \033[F",
-        localMaxLZB,
-        expectedMaxLZB,
-        collisionProb * 100.0,
-        (eta50 >= 0) ? GetTimeStr(eta50).c_str() : "N/A",
-        (eta90 >= 0) ? GetTimeStr(eta90).c_str() : "N/A",
-        hotBucketsStr
+      // Update tracking variables for next iteration
+      lastDPCount = currentDPs;
+      lastDPTime = currentTime;
+
+      printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s]  \033[F",
+        (unsigned long long)currentDPs,
+        dpRate
         );
       fflush(stdout);
 
@@ -654,22 +474,13 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
     int128_t localLastGap = lastGap;
     bool gapFound = false;
 
-    // LZB analysis tracking
-    uint32_t localMaxLZB = 0;
-    int128_t localClosestXor;
-    localClosestXor.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
-    localClosestXor.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
-    uint32_t localMaxLZBBucket = 0;
-
     std::vector<int128_t> distances;
-    std::vector<int128_t> positions;    // X-coordinates for LZB analysis
     std::vector<uint32_t> herdTypes;
 
     // Scan through all hash buckets
     for(uint32_t h = 0; h < HASH_SIZE && !endOfSearch; h++) {
 
       distances.clear();
-      positions.clear();
       herdTypes.clear();
 
       LOCK(ghMutex);
@@ -677,7 +488,6 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
 
       if(nbItem > 1) {
         distances.reserve(nbItem);
-        positions.reserve(nbItem);
         herdTypes.reserve(nbItem);
 
         for(uint32_t i = 0; i < nbItem; i++) {
@@ -687,7 +497,6 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
           dist.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
 
           distances.push_back(dist);
-          positions.push_back(entry->x);  // Store x-coordinate
           herdTypes.push_back(type);
         }
       }
@@ -696,16 +505,10 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
       uint32_t nbStored = (uint32_t)distances.size();
       if(nbStored > 1 && !endOfSearch) {
 
-        // Track best LZB for this bucket
-        uint32_t bucketMaxLZB = 0;
-        int128_t bucketBestXor;
-        bucketBestXor.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
-        bucketBestXor.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
-
         for(uint32_t i = 0; i < nbStored - 1 && !endOfSearch; i++) {
           for(uint32_t j = i + 1; j < nbStored && !endOfSearch; j++) {
             if(herdTypes[i] != herdTypes[j]) {
-              // Calculate absolute difference in distances (existing gap calculation)
+              // Calculate absolute difference in distances
               int128_t gap;
               if(distances[i].i64[1] > distances[j].i64[1] ||
                  (distances[i].i64[1] == distances[j].i64[1] && distances[i].i64[0] > distances[j].i64[0])) {
@@ -727,34 +530,8 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
                 localMinGap.i64[0] = gap.i64[0];
                 localMinGap.i64[1] = gap.i64[1];
               }
-
-              // NEW: Calculate XOR of x-coordinates for LZB analysis
-              int128_t xorDiff;
-              xorDiff.i64[0] = positions[i].i64[0] ^ positions[j].i64[0];
-              xorDiff.i64[1] = positions[i].i64[1] ^ positions[j].i64[1];
-
-              // Count leading zero bits
-              uint32_t lzb = CountLeadingZeroBits(&xorDiff);
-
-              // Update bucket-level best
-              if(lzb > bucketMaxLZB) {
-                bucketMaxLZB = lzb;
-                bucketBestXor = xorDiff;
-              }
-
-              // Update global best
-              if(lzb > localMaxLZB) {
-                localMaxLZB = lzb;
-                localClosestXor = xorDiff;
-                localMaxLZBBucket = h;
-              }
             }
           }
-        }
-
-        // Update hot buckets if this bucket has meaningful LZB
-        if(bucketMaxLZB > 0) {
-          UpdateHotBuckets(h, bucketMaxLZB, &bucketBestXor);
         }
       }
     }
@@ -773,14 +550,6 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
          (localMinGap.i64[1] == lowestGap.i64[1] && localMinGap.i64[0] < lowestGap.i64[0])) {
         lowestGap.i64[0] = localMinGap.i64[0];
         lowestGap.i64[1] = localMinGap.i64[1];
-      }
-
-      // Update LZB analysis results
-      if(localMaxLZB > maxLeadingZeroBits) {
-        maxLeadingZeroBits = localMaxLZB;
-        closestXorDiff.i64[0] = localClosestXor.i64[0];
-        closestXorDiff.i64[1] = localClosestXor.i64[1];
-        maxLZBBucket = localMaxLZBBucket;
       }
 
       UNLOCK(ghMutex);
