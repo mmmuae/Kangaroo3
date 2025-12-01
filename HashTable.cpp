@@ -18,6 +18,7 @@
 #include "HashTable.h"
 #include <stdio.h>
 #include <math.h>
+#include <vector>
 #ifndef WIN64
 #include <string.h>
 #endif
@@ -114,6 +115,25 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
   uint32_t nbd = 0;
   uint32_t md = nb1 + nb2;
 
+  static thread_local std::vector<ENTRY> mergeScratch;
+  mergeScratch.clear();
+
+  auto ensureCapacity = [&](size_t required) {
+    if(required > mergeScratch.capacity()) {
+      size_t newCap = mergeScratch.capacity();
+      if(newCap == 0) newCap = 16;
+      while(newCap < required) {
+        size_t nextCap = newCap << 1U;
+        if(nextCap <= newCap) {
+          newCap = required;
+          break;
+        }
+        newCap = nextCap;
+      }
+      mergeScratch.reserve(newCap);
+    }
+  };
+
   if(md==0) {
 
     ::fwrite(&md,sizeof(uint32_t),1,fd);
@@ -122,7 +142,34 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
 
   }
 
-  ENTRY *output = (ENTRY *)malloc( md * sizeof(ENTRY) );
+  constexpr size_t kFlushThreshold = 1024;
+  ensureCapacity(std::max<size_t>(md,kFlushThreshold));
+
+#ifdef WIN64
+  __int64 headerPos = _ftelli64(fd);
+#else
+  off_t headerPos = ftello(fd);
+#endif
+  uint32_t placeholder = 0;
+  ::fwrite(&placeholder,sizeof(uint32_t),1,fd);
+  ::fwrite(&placeholder,sizeof(uint32_t),1,fd);
+
+  auto flushBuffer = [&]() {
+    if(!mergeScratch.empty()) {
+      ::fwrite(mergeScratch.data(),sizeof(ENTRY),mergeScratch.size(),fd);
+      mergeScratch.clear();
+    }
+  };
+
+  auto appendEntry = [&](const ENTRY& e) {
+    if(mergeScratch.size() == mergeScratch.capacity()) {
+      ensureCapacity(mergeScratch.size() + 1);
+    }
+    mergeScratch.push_back(e);
+    if(mergeScratch.size() >= kFlushThreshold) {
+      flushBuffer();
+    }
+  };
 
   ENTRY e1;
   ENTRY e2;
@@ -141,7 +188,7 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
 
       int comp = compare(&e1.x,&e2.x);
       if(comp < 0) {
-        memcpy(output+nbd,&e1,32);
+        appendEntry(e1);
         nbd++;
         AV1();
         nb1--;
@@ -154,14 +201,14 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
           CalcDistAndType(e2.d,d2,k2);
           collisionFound = true;
         }
-        memcpy(output + nbd,&e1,32);
+        appendEntry(e1);
         nbd++;
         AV1();
         AV2();
         nb1--;
         nb2--;
       } else {
-        memcpy(output + nbd,&e2,32);
+        appendEntry(e2);
         nbd++;
         AV2();
         nb2--;
@@ -169,14 +216,14 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
 
     } else if( !end1 && end2 ) {
 
-      memcpy(output + nbd,&e1,32);
+      appendEntry(e1);
       nbd++;
       AV1();
       nb1--;
 
     } else if( end1 && !end2) {
 
-      memcpy(output + nbd,&e2,32);
+      appendEntry(e2);
       nbd++;
       AV2();
       nb2--;
@@ -197,10 +244,24 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
     md = ((nbd/4)+1)*4;
   }
 
+  flushBuffer();
+
+#ifdef WIN64
+  __int64 endPos = _ftelli64(fd);
+  _fseeki64(fd,headerPos,SEEK_SET);
+#else
+  off_t endPos = ftello(fd);
+  fseeko(fd,headerPos,SEEK_SET);
+#endif
+
   ::fwrite(&nbd,sizeof(uint32_t),1,fd);
   ::fwrite(&md,sizeof(uint32_t),1,fd);
-  ::fwrite(output,32,nbd,fd);
-  free(output);
+
+#ifdef WIN64
+  _fseeki64(fd,endPos,SEEK_SET);
+#else
+  fseeko(fd,endPos,SEEK_SET);
+#endif
 
   *nbDP = nbd;
   return (collisionFound?ADD_COLLISION:ADD_OK);
