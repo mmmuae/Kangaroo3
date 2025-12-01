@@ -55,11 +55,19 @@ typedef struct {
 
 } ENTRY;
 
+enum SlotState : uint8_t {
+  SLOT_EMPTY = 0,
+  SLOT_OCCUPIED = 1,
+  SLOT_TOMBSTONE = 2
+};
+
 typedef struct {
 
   uint32_t   nbItem;
   uint32_t   maxItem;
-  ENTRY    **items;
+  uint32_t   nbTombstone;
+  ENTRY     *items;
+  uint8_t   *states;
 
 } HASH_ENTRY;
 
@@ -70,7 +78,7 @@ public:
   HashTable();
   int Add(Int *x,Int *d,uint32_t type);
   int Add(uint64_t h,int128_t *x,int128_t *d);
-  int Add(uint64_t h,ENTRY *e);
+  int Add(uint64_t h,const ENTRY& e);
   uint64_t GetNbItem();
   void Reset();
   std::string GetSizeInfo();
@@ -79,7 +87,6 @@ public:
   void SaveTable(FILE* f,uint32_t from,uint32_t to,bool printPoint=true);
   void LoadTable(FILE *f);
   void LoadTable(FILE* f,uint32_t from,uint32_t to);
-  void ReAllocate(uint64_t h,uint32_t add);
   void SeekNbItem(FILE* f,bool restorePos = false);
   void SeekNbItem(FILE* f,uint32_t from,uint32_t to);
 
@@ -95,7 +102,11 @@ public:
 
 private:
 
-  ENTRY *CreateEntry(int128_t *x,int128_t *d);
+  void Allocate(uint64_t h,uint32_t size);
+  void ReHash(uint64_t h,uint32_t newSize);
+  uint32_t StartIndex(const ENTRY& e,const HASH_ENTRY& he);
+  uint32_t InsertInBucket(HASH_ENTRY& he,const ENTRY& e,bool detectCollision);
+  bool NeedRehash(const HASH_ENTRY& he);
   static int compare(int128_t *i1,int128_t *i2);
   std::string GetStr(int128_t *i);
 

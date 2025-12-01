@@ -22,8 +22,6 @@
 #include <string.h>
 #endif
 
-#define GET(hash,id) E[hash].items[id]
-
 HashTable::HashTable() {
 
   memset(E,0,sizeof(E));
@@ -33,13 +31,11 @@ HashTable::HashTable() {
 void HashTable::Reset() {
 
   for(uint32_t h = 0; h < HASH_SIZE; h++) {
-    if(E[h].items) {
-      for(uint32_t i = 0; i<E[h].nbItem; i++)
-        free(E[h].items[i]);
-    }
     safe_free(E[h].items);
+    safe_free(E[h].states);
     E[h].maxItem = 0;
     E[h].nbItem = 0;
+    E[h].nbTombstone = 0;
   }
 
 }
@@ -54,23 +50,16 @@ uint64_t HashTable::GetNbItem() {
 
 }
 
-ENTRY *HashTable::CreateEntry(int128_t *x,int128_t *d) {
+void HashTable::Allocate(uint64_t h,uint32_t size) {
 
-  ENTRY *e = (ENTRY *)malloc(sizeof(ENTRY));
-  e->x.i64[0] = x->i64[0];
-  e->x.i64[1] = x->i64[1];
-  e->d.i64[0] = d->i64[0];
-  e->d.i64[1] = d->i64[1];
-  return e;
+  E[h].maxItem = size;
+  E[h].nbItem = 0;
+  E[h].nbTombstone = 0;
+  E[h].items = (ENTRY *)malloc(sizeof(ENTRY) * size);
+  E[h].states = (uint8_t *)malloc(sizeof(uint8_t) * size);
+  memset(E[h].states,SLOT_EMPTY,size);
 
 }
-
-#define ADD_ENTRY(entry) {                 \
-  /* Shift the end of the index table */   \
-  for (int i = E[h].nbItem; i > st; i--)   \
-    E[h].items[i] = E[h].items[i - 1];     \
-  E[h].items[st] = entry;                  \
-  E[h].nbItem++;}
 
 void HashTable::Convert(Int *x,Int *d,uint32_t type,uint64_t *h,int128_t *X,int128_t *D) {
 
@@ -224,24 +213,26 @@ int HashTable::Add(Int *x,Int *d,uint32_t type) {
   int128_t D;
   uint64_t h;
   Convert(x,d,type,&h,&X,&D);
-  ENTRY* e = CreateEntry(&X,&D);
+  ENTRY e;
+  e.x = X;
+  e.d = D;
   return Add(h,e);
 
 }
 
-void HashTable::ReAllocate(uint64_t h,uint32_t add) {
+bool HashTable::NeedRehash(const HASH_ENTRY& he) {
 
-  E[h].maxItem += add;
-  ENTRY** nitems = (ENTRY**)malloc(sizeof(ENTRY*) * E[h].maxItem);
-  memcpy(nitems,E[h].items,sizeof(ENTRY*) * E[h].nbItem);
-  free(E[h].items);
-  E[h].items = nitems;
+  // Keep load factor under 70%, taking tombstones into account
+  uint64_t used = (uint64_t)he.nbItem + (uint64_t)he.nbTombstone + 1ULL;
+  return used * 10 > (uint64_t)he.maxItem * 7;
 
 }
 
 int HashTable::Add(uint64_t h,int128_t *x,int128_t *d) {
 
-  ENTRY *e = CreateEntry(x,d);
+  ENTRY e;
+  e.x = *x;
+  e.d = *d;
   return Add(h,e);
 
 }
@@ -259,50 +250,89 @@ void HashTable::CalcDistAndType(int128_t d,Int* kDist,uint32_t* kType) {
 
 }
 
-int HashTable::Add(uint64_t h,ENTRY* e) {
+uint32_t HashTable::StartIndex(const ENTRY& e,const HASH_ENTRY& he) {
 
-  if(E[h].maxItem == 0) {
-    E[h].maxItem = 16;
-    E[h].items = (ENTRY **)malloc(sizeof(ENTRY *) * E[h].maxItem);
-  }
+  uint64_t key = e.x.i64[0] ^ e.x.i64[1];
+  return (uint32_t)(key % he.maxItem);
 
-  if(E[h].nbItem == 0) {
-    E[h].items[0] = e;
-    E[h].nbItem = 1;
-    return ADD_OK;
-  }
+}
 
-  if(E[h].nbItem >= E[h].maxItem - 1) {
-    // We need to reallocate
-    ReAllocate(h,4);
-  }
+uint32_t HashTable::InsertInBucket(HASH_ENTRY& he,const ENTRY& e,bool detectCollision) {
 
-  // Search insertion position
-  int st,ed,mi;
-  st = 0; ed = E[h].nbItem - 1;
-  while(st <= ed) {
-    mi = (st + ed) / 2;
-    int comp = compare(&e->x,&GET(h,mi)->x);
-    if(comp<0) {
-      ed = mi - 1;
-    } else if (comp==0) {
+  uint32_t start = StartIndex(e,he);
+  uint32_t insertPos = he.maxItem;
 
-      if((e->d.i64[0] == GET(h,mi)->d.i64[0]) && (e->d.i64[1] == GET(h,mi)->d.i64[1])) {
-        // Same point added 2 times or collision in same herd !
-        return ADD_DUPLICATE;
+  for(uint32_t p = 0; p < he.maxItem; p++) {
+    uint32_t pos = (start + p);
+    if(pos >= he.maxItem) pos -= he.maxItem;
+
+    uint8_t state = he.states[pos];
+    if(state == SLOT_EMPTY) {
+      if(insertPos == he.maxItem) insertPos = pos;
+      he.items[insertPos] = e;
+      he.states[insertPos] = SLOT_OCCUPIED;
+      he.nbItem++;
+      if(insertPos != pos) he.nbTombstone--;
+      return ADD_OK;
+    }
+
+    if(state == SLOT_TOMBSTONE) {
+      if(insertPos == he.maxItem) insertPos = pos;
+      continue;
+    }
+
+    if(detectCollision) {
+      int comp = compare((int128_t *)&e.x,(int128_t *)&he.items[pos].x);
+      if(comp == 0) {
+        if((e.d.i64[0] == he.items[pos].d.i64[0]) && (e.d.i64[1] == he.items[pos].d.i64[1])) {
+          // Same point added 2 times or collision in same herd !
+          return ADD_DUPLICATE;
+        }
+
+        // Collision
+        CalcDistAndType(he.items[pos].d , &kDist, &kType);
+        return ADD_COLLISION;
       }
-
-      // Collision
-      CalcDistAndType(GET(h,mi)->d , &kDist, &kType);
-      return ADD_COLLISION;
-
-    } else {
-      st = mi + 1;
     }
   }
 
-  ADD_ENTRY(e);
-  return ADD_OK;
+  return ADD_COLLISION;
+
+}
+
+void HashTable::ReHash(uint64_t h,uint32_t newSize) {
+
+  HASH_ENTRY old = E[h];
+  Allocate(h,newSize);
+
+  for(uint32_t i = 0; i < old.maxItem; i++) {
+    if(old.states && old.states[i] == SLOT_OCCUPIED) {
+      InsertInBucket(E[h],old.items[i],false);
+    }
+  }
+
+  safe_free(old.items);
+  safe_free(old.states);
+
+}
+
+int HashTable::Add(uint64_t h,const ENTRY& e) {
+
+  if(E[h].maxItem == 0) {
+    Allocate(h,16);
+  }
+
+  if(NeedRehash(E[h])) {
+    ReHash(h,E[h].maxItem * 2);
+  }
+
+  int res = InsertInBucket(E[h],e,true);
+  if(res == ADD_COLLISION && NeedRehash(E[h])) {
+    ReHash(h,E[h].maxItem * 2);
+    res = InsertInBucket(E[h],e,true);
+  }
+
+  return res;
 
 }
 
@@ -327,12 +357,13 @@ std::string HashTable::GetSizeInfo() {
 
   char *unit;
   uint64_t totalByte = sizeof(E);
-  uint64_t usedByte = HASH_SIZE*2*sizeof(uint32_t);
+  uint64_t usedByte = HASH_SIZE*3*sizeof(uint32_t);
 
   for (int h = 0; h < HASH_SIZE; h++) {
-    totalByte += sizeof(ENTRY *) * E[h].maxItem;
-    totalByte += sizeof(ENTRY) * E[h].nbItem;
+    totalByte += sizeof(ENTRY) * E[h].maxItem;
+    totalByte += sizeof(uint8_t) * E[h].maxItem;
     usedByte += sizeof(ENTRY) * E[h].nbItem;
+    usedByte += sizeof(uint8_t) * E[h].maxItem;
   }
 
   unit = "MB";
@@ -380,14 +411,18 @@ void HashTable::SaveTable(FILE* f,uint32_t from,uint32_t to,bool printPoint) {
   for(uint32_t h = from; h < to; h++) {
     fwrite(&E[h].nbItem,sizeof(uint32_t),1,f);
     fwrite(&E[h].maxItem,sizeof(uint32_t),1,f);
-    for(uint32_t i = 0; i < E[h].nbItem; i++) {
-      fwrite(&(E[h].items[i]->x),16,1,f);
-      fwrite(&(E[h].items[i]->d),16,1,f);
-      if(printPoint) {
-        pointPrint++;
-        if(pointPrint > point) {
-          ::printf(".");
-          pointPrint = 0;
+    if(E[h].states) {
+      for(uint32_t i = 0; i < E[h].maxItem; i++) {
+        if(E[h].states[i] == SLOT_OCCUPIED) {
+          fwrite(&(E[h].items[i].x),16,1,f);
+          fwrite(&(E[h].items[i].d),16,1,f);
+          if(printPoint) {
+            pointPrint++;
+            if(pointPrint > point) {
+              ::printf(".");
+              pointPrint = 0;
+            }
+          }
         }
       }
     }
@@ -442,18 +477,18 @@ void HashTable::LoadTable(FILE* f,uint32_t from,uint32_t to) {
 
   for(uint32_t h = from; h < to; h++) {
 
-    fread(&E[h].nbItem,sizeof(uint32_t),1,f);
+    uint32_t nbItem;
+    fread(&nbItem,sizeof(uint32_t),1,f);
     fread(&E[h].maxItem,sizeof(uint32_t),1,f);
 
     if(E[h].maxItem > 0)
-      // Allocate indexes
-      E[h].items = (ENTRY**)malloc(sizeof(ENTRY*) * E[h].maxItem);
+      Allocate(h,E[h].maxItem);
 
-    for(uint32_t i = 0; i < E[h].nbItem; i++) {
-      ENTRY* e = (ENTRY*)malloc(sizeof(ENTRY));
-      fread(&(e->x),16,1,f);
-      fread(&(e->d),16,1,f);
-      E[h].items[i] = e;
+    for(uint32_t i = 0; i < nbItem; i++) {
+      ENTRY e;
+      fread(&(e.x),16,1,f);
+      fread(&(e.d),16,1,f);
+      InsertInBucket(E[h],e,false);
     }
 
   }
