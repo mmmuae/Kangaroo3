@@ -23,7 +23,6 @@
 #include "Random.h"
 #include <string>
 #include <inttypes.h>
-#include <time.h>
 
 // We need 1 extra block for Knuth div algorithm , Montgomery multiplication and ModInv
 #define BISIZE 256
@@ -319,7 +318,7 @@ static inline unsigned char _addcarry_u64(unsigned char c_in, uint64_t a, uint64
 static inline unsigned char _subborrow_u64(unsigned char b_in, uint64_t a, uint64_t b, uint64_t *out) {
   __uint128_t diff = (__uint128_t)a - b - b_in;
   *out = (uint64_t)diff;
-  return (unsigned char)(a < (b + (uint64_t)b_in));
+  return (unsigned char)(diff >> 127); // Check sign bit
 }
 #endif
 #endif
