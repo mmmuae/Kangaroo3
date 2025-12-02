@@ -61,6 +61,9 @@
     result.lanes.i64[1] = a.lanes.i64[1] - b.lanes.i64[1];
     return result;
   }
+
+  // Provide a minimal compatibility shim for the layout used later in the file
+  #define m128i_u64 lanes.m128i_u64
 #endif
 
 #define MAX(x,y) (((x)>(y))?(x):(y))
