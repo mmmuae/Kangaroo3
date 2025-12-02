@@ -508,33 +508,40 @@ void GPUEngine::SetKangaroo(uint64_t kIdx,Int *px,Int *py,Int *d) {
   uint64_t g = (kIdx / nbThreadPerGroup) % GPU_GRP_SIZE;
   uint64_t b = kIdx / (nbThreadPerGroup*GPU_GRP_SIZE);
 
-  KangarooInput kangaroo {};
-  kangaroo.x[0] = px->bits64[0];
-  kangaroo.x[1] = px->bits64[1];
-  kangaroo.x[2] = px->bits64[2];
-  kangaroo.x[3] = px->bits64[3];
+  // X
+  inputKangarooPinned[0] = px->bits64[0];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 0 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  inputKangarooPinned[0] = px->bits64[1];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 1 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  inputKangarooPinned[0] = px->bits64[2];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 2 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  inputKangarooPinned[0] = px->bits64[3];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 3 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
 
-  kangaroo.y[0] = py->bits64[0];
-  kangaroo.y[1] = py->bits64[1];
-  kangaroo.y[2] = py->bits64[2];
-  kangaroo.y[3] = py->bits64[3];
+  // Y
+  inputKangarooPinned[0] = py->bits64[0];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 4 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  inputKangarooPinned[0] = py->bits64[1];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 5 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  inputKangarooPinned[0] = py->bits64[2];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 6 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  inputKangarooPinned[0] = py->bits64[3];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 7 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
 
+  // D
   Int dOff;
   dOff.Set(d);
   if(kIdx % 2 == WILD) dOff.ModAddK1order(&wildOffset);
-  kangaroo.d[0] = dOff.bits64[0];
-  kangaroo.d[1] = dOff.bits64[1];
+  inputKangarooPinned[0] = dOff.bits64[0];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 8 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  inputKangarooPinned[0] = dOff.bits64[1];
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 9 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
 
 #ifdef USE_SYMMETRY
-  kangaroo.lastJump = (uint64_t)NB_JUMP;
+  // Last jump
+  inputKangarooPinned[0] = (uint64_t)NB_JUMP;
+  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 10 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
 #endif
-
-  uint64_t offset = b * blockSize + g * strideSize + t;
-  cudaError_t err = cudaMemcpy2DAsync(inputKangaroo + offset,nbThreadPerGroup * sizeof(uint64_t),
-      &kangaroo,sizeof(uint64_t),sizeof(uint64_t),KSIZE,cudaMemcpyHostToDevice);
-  if(err != cudaSuccess) {
-    printf("GPUEngine: SetKangaroo: %s\n",cudaGetErrorString(err));
-  }
 
 }
 

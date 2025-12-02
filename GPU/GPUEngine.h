@@ -31,17 +31,6 @@
 #define ITEM_SIZE   56
 #define ITEM_SIZE32 (ITEM_SIZE/4)
 
-struct __attribute__((packed)) KangarooInput {
-  uint64_t x[4];
-  uint64_t y[4];
-  uint64_t d[2];
-#ifdef USE_SYMMETRY
-  uint64_t lastJump;
-#endif
-};
-
-static_assert(sizeof(KangarooInput) == KSIZE * sizeof(uint64_t), "KangarooInput size mismatch");
-
 typedef struct {
   Int x;
   Int d;
