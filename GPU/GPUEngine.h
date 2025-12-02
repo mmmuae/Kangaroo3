@@ -19,7 +19,6 @@
 #define GPUENGINEH
 
 #include <vector>
-#include <cuda_runtime.h>
 #include "../Constants.h"
 #include "../SECPK1/SECP256k1.h"
 
@@ -81,11 +80,9 @@ private:
   int nbThreadPerGroup;
   uint64_t *inputKangaroo;
   uint64_t *inputKangarooPinned;
-  uint32_t *outputItem[2];
-  uint32_t *outputItemPinned[2];
+  uint32_t *outputItem;
+  uint32_t *outputItemPinned;
   uint64_t *jumpPinned;
-  cudaStream_t streams[2];
-  cudaEvent_t copyEvents[2];
   bool initialised;
   bool lostWarning;
   uint32_t maxFound;
@@ -94,9 +91,6 @@ private:
   uint32_t kangarooSizePinned;
   uint32_t jumpSize;
   uint64_t dpMask;
-  int currentStream;
-  int lastLaunchedStream;
-  bool pendingStream[2];
 
 };
 
