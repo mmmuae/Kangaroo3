@@ -1216,15 +1216,15 @@ std::string Int::GetBase16() {
 
 std::string Int::GetBlockStr() {
 	
-        char tmp[256];
-        char bStr[256];
-        tmp[0] = 0;
-        for (int i = NB32BLOCK-3; i>=0 ; i--) {
-          snprintf(bStr, sizeof(bStr), "%08X", bits[i]);
-          strcat(tmp, bStr);
-          if(i!=0) strcat(tmp, " ");
-        }
-        return std::string(tmp);
+	char tmp[256];
+	char bStr[256];
+	tmp[0] = 0;
+	for (int i = NB32BLOCK-3; i>=0 ; i--) {
+	  sprintf(bStr, "%08X", bits[i]);
+	  strcat(tmp, bStr);
+	  if(i!=0) strcat(tmp, " ");
+	}
+	return std::string(tmp);
 }
 
 // ------------------------------------------------
@@ -1238,12 +1238,12 @@ std::string Int::GetC64Str(int nbDigit) {
   for (int i = 0; i< nbDigit; i++) {
     if (bits64[i] != 0) {
 #ifdef WIN64
-      snprintf(bStr, sizeof(bStr), "0x%016I64XULL", bits64[i]);
+      sprintf(bStr, "0x%016I64XULL", bits64[i]);
 #else
-      snprintf(bStr, sizeof(bStr), "0x%" PRIx64  "ULL", bits64[i]);
+      sprintf(bStr, "0x%" PRIx64  "ULL", bits64[i]);
 #endif
     } else {
-      snprintf(bStr, sizeof(bStr), "0ULL");
+      sprintf(bStr, "0ULL");
     }
     strcat(tmp, bStr);
     if (i != nbDigit -1) strcat(tmp, ",");
