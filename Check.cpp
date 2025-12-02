@@ -35,47 +35,43 @@ uint32_t Kangaroo::CheckHash(uint32_t h,uint32_t nbItem,HashTable* hT,FILE* f) {
   bool ok=true;
   vector<Int> dists;
   vector<uint32_t> types;
-  vector<ENTRY> entries;
   Point Z;
   Z.Clear();
   uint32_t nbWrong = 0;
+  ENTRY *items = NULL;
+  ENTRY* e;
 
   if( hT ) {
 
-    entries.reserve(nbItem);
-    HASH_ENTRY& bucket = hT->E[h];
-    if(bucket.states) {
-      for(uint32_t i = 0; i < bucket.maxItem; i++) {
-        if(bucket.states[i] == SLOT_OCCUPIED) {
-          entries.push_back(bucket.items[i]);
-        }
-      }
+    for(uint32_t i = 0; i < nbItem; i++) {
+      e = hT->E[h].items[i];
+      Int dist;
+      uint32_t kType;
+      HashTable::CalcDistAndType(e->d,&dist,&kType);
+      dists.push_back(dist);
+      types.push_back(kType);
     }
 
   } else {
 
-    entries.resize(nbItem);
+    items = (ENTRY*)malloc(nbItem * sizeof(ENTRY));
 
     for(uint32_t i = 0; i < nbItem; i++) {
-      ::fread(&(entries[i]),32,1,f);
+      ::fread(items+i,32,1,f);
+      e = items + i;
+      Int dist;
+      uint32_t kType;
+      HashTable::CalcDistAndType(e->d,&dist,&kType);
+      dists.push_back(dist);
+      types.push_back(kType);
     }
 
-  }
-
-  uint32_t entryCount = (uint32_t)entries.size();
-
-  for(uint32_t i = 0; i < entryCount; i++) {
-    Int dist;
-    uint32_t kType;
-    HashTable::CalcDistAndType(entries[i].d,&dist,&kType);
-    dists.push_back(dist);
-    types.push_back(kType);
   }
 
   vector<Point> P = secp->ComputePublicKeys(dists);
   vector<Point> Sp;
 
-  for(uint32_t i = 0; i < entryCount; i++) {
+  for(uint32_t i = 0; i < nbItem; i++) {
 
     if(types[i] == TAME) {
       Sp.push_back(Z);
@@ -87,10 +83,13 @@ uint32_t Kangaroo::CheckHash(uint32_t h,uint32_t nbItem,HashTable* hT,FILE* f) {
 
   vector<Point> S = secp->AddDirect(Sp,P);
 
-  for(uint32_t i = 0; i < entryCount; i++) {
+  for(uint32_t i = 0; i < nbItem; i++) {
+
+    if(hT)    e = hT->E[h].items[i];
+    else      e = items + i;
 
     uint32_t hC = S[i].x.bits64[2] & HASH_MASK;
-    ok = (hC == h) && (S[i].x.bits64[0] == entries[i].x.i64[0]) && (S[i].x.bits64[1] == entries[i].x.i64[1]);
+    ok = (hC == h) && (S[i].x.bits64[0] == e->x.i64[0]) && (S[i].x.bits64[1] == e->x.i64[1]);
     if(!ok) nbWrong++;
     //if(!ok) {
     //  ::printf("\nCheckWorkFile wrong at: %06X [%d]\n",h,i);
@@ -102,6 +101,8 @@ uint32_t Kangaroo::CheckHash(uint32_t h,uint32_t nbItem,HashTable* hT,FILE* f) {
 
 
   }
+
+  if(items) free(items);
   return nbWrong;
 
 }

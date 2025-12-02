@@ -490,16 +490,14 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
         distances.reserve(nbItem);
         herdTypes.reserve(nbItem);
 
-        for(uint32_t i = 0; i < hashTable.E[h].maxItem; i++) {
-          if(hashTable.E[h].states && hashTable.E[h].states[i] == SLOT_OCCUPIED) {
-            ENTRY* entry = &hashTable.E[h].items[i];
-            uint32_t type = (entry->d.i64[1] & 0x4000000000000000ULL) != 0;
-            int128_t dist = entry->d;
-            dist.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
+        for(uint32_t i = 0; i < nbItem; i++) {
+          ENTRY* entry = hashTable.E[h].items[i];
+          uint32_t type = (entry->d.i64[1] & 0x4000000000000000ULL) != 0;
+          int128_t dist = entry->d;
+          dist.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
 
-            distances.push_back(dist);
-            herdTypes.push_back(type);
-          }
+          distances.push_back(dist);
+          herdTypes.push_back(type);
         }
       }
       UNLOCK(ghMutex);
