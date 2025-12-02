@@ -41,24 +41,27 @@
   // Helper functions for FakeM128i operations
   static inline FakeM128i _mm_slli_epi64(FakeM128i a, int count) {
     FakeM128i result;
-    result.i64[0] = a.i64[0] << count;
-    result.i64[1] = a.i64[1] << count;
+    result.lanes.i64[0] = a.lanes.i64[0] << count;
+    result.lanes.i64[1] = a.lanes.i64[1] << count;
     return result;
   }
 
   static inline FakeM128i _mm_add_epi64(FakeM128i a, FakeM128i b) {
     FakeM128i result;
-    result.i64[0] = a.i64[0] + b.i64[0];
-    result.i64[1] = a.i64[1] + b.i64[1];
+    result.lanes.i64[0] = a.lanes.i64[0] + b.lanes.i64[0];
+    result.lanes.i64[1] = a.lanes.i64[1] + b.lanes.i64[1];
     return result;
   }
 
   static inline FakeM128i _mm_sub_epi64(FakeM128i a, FakeM128i b) {
     FakeM128i result;
-    result.i64[0] = a.i64[0] - b.i64[0];
-    result.i64[1] = a.i64[1] - b.i64[1];
+    result.lanes.i64[0] = a.lanes.i64[0] - b.lanes.i64[0];
+    result.lanes.i64[1] = a.lanes.i64[1] - b.lanes.i64[1];
     return result;
   }
+
+  // Provide a minimal compatibility shim for the layout used later in the file
+  #define m128i_u64 lanes.m128i_u64
 #endif
 
 #define MAX(x,y) (((x)>(y))?(x):(y))
