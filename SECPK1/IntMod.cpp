@@ -29,14 +29,16 @@
     union {
       int64_t  i64[2];
       uint64_t u64[2];
-    };
+    } lanes;
   } FakeM128i;
 
   #define __m128i FakeM128i
 
   // Provide aliases to mirror the SSE layout used in the existing code
-  #define m128i_i64 i64
-  #define m128i_u64 u64
+  #define m128i_i64 lanes.i64
+  #define m128i_u64 lanes.u64
+  #define i64 lanes.i64
+  #define u64 lanes.u64
 
   // Helper functions for FakeM128i operations
   static inline FakeM128i _mm_slli_epi64(FakeM128i a, int count) {
