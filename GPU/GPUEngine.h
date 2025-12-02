@@ -43,14 +43,11 @@ struct __attribute__((packed)) KangarooInput {
 
 static_assert(sizeof(KangarooInput) == KSIZE * sizeof(uint64_t), "KangarooInput size mismatch");
 
-#ifndef ITEM_DEFINED
-#define ITEM_DEFINED
 typedef struct {
   Int x;
   Int d;
   uint64_t kIdx;
 } ITEM;
-#endif
 
 class GPUEngine {
 
