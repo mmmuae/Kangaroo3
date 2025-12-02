@@ -19,7 +19,9 @@
 #include "Timer.h"
 #include "SECPK1/SECP256k1.h"
 #include "SECPK1/Int.h"
+#ifdef WITHGPU
 #include "GPU/GPUEngine.h"
+#endif
 #include <fstream>
 #include <string>
 #include <string.h>
