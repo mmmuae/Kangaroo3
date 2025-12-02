@@ -38,10 +38,13 @@ typedef int SOCKET;
 
 #include <string>
 #include <vector>
+#include "Constants.h"
 #include "SECPK1/SECP256k1.h"
 #include "HashTable.h"
 #include "SECPK1/IntGroup.h"
+#ifdef WITHGPU
 #include "GPU/GPUEngine.h"
+#endif
 
 #ifdef WIN64
 typedef HANDLE THREAD_HANDLE;
@@ -54,6 +57,15 @@ typedef pthread_t THREAD_HANDLE;
 #endif
 
 class Kangaroo;
+
+#ifndef ITEM_DEFINED
+#define ITEM_DEFINED
+typedef struct {
+  Int x;
+  Int d;
+  uint64_t kIdx;
+} ITEM;
+#endif
 
 // Input thread parameters
 typedef struct {
