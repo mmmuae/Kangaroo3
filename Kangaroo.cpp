@@ -78,11 +78,7 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->splitWorkfile = splitWorkfile;
   this->pid = Timer::getPID();
 
-  // Scale the number of kangaroos per CPU thread with the available cores so
-  // modern multi-core CPUs aren't limited to the legacy 1024 default.
-  int coreCount = Timer::getCoreNumber();
-  int scaledCPUGrp = coreCount * 512;
-  CPU_GRP_SIZE = std::max(1024, scaledCPUGrp);
+  CPU_GRP_SIZE = 1024;
 
   // Init mutex
 #ifdef WIN64
