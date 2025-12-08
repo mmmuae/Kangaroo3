@@ -256,9 +256,12 @@ void Kangaroo::ProcessServer() {
       lastDPCount = currentDPs;
       lastDPTime = currentTime;
 
-      printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s]  \033[F",
+      std::string keyEstimateStr = hasKeyEstimate ? ("0x" + lastKeyEstimate.GetBase16()) : "n/a";
+
+      printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s][k_est: %s]  \033[F",
         (unsigned long long)currentDPs,
-        dpRate
+        dpRate,
+        keyEstimateStr.c_str()
         );
       fflush(stdout);
     }
@@ -397,9 +400,12 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       lastDPCount = currentDPs;
       lastDPTime = currentTime;
 
-      printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s]  \033[F",
+      std::string keyEstimateStr = hasKeyEstimate ? ("0x" + lastKeyEstimate.GetBase16()) : "n/a";
+
+      printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s][k_est: %s]  \033[F",
         (unsigned long long)currentDPs,
-        dpRate
+        dpRate,
+        keyEstimateStr.c_str()
         );
       fflush(stdout);
 
@@ -473,14 +479,20 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
 
     int128_t localLastGap = lastGap;
     bool gapFound = false;
+    bool keyComputed = false;
+
+    Int localKeyEstimate;
+    localKeyEstimate.SetInt32(0);
 
     std::vector<int128_t> distances;
+    std::vector<int128_t> rawDistances;
     std::vector<uint32_t> herdTypes;
 
     // Scan through all hash buckets
     for(uint32_t h = 0; h < HASH_SIZE && !endOfSearch; h++) {
 
       distances.clear();
+      rawDistances.clear();
       herdTypes.clear();
 
       LOCK(ghMutex);
@@ -488,12 +500,14 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
 
       if(nbItem > 1) {
         distances.reserve(nbItem);
+        rawDistances.reserve(nbItem);
         herdTypes.reserve(nbItem);
 
         for(uint32_t i = 0; i < nbItem; i++) {
           ENTRY* entry = hashTable.E[h].items[i];
-          uint32_t type = (entry->d.i64[1] & 0x4000000000000000ULL) != 0;
           int128_t dist = entry->d;
+          uint32_t type = (dist.i64[1] & 0x4000000000000000ULL) != 0;
+          rawDistances.push_back(dist);
           dist.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
 
           distances.push_back(dist);
@@ -524,6 +538,22 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
               gapFound = true;
               localLastGap = gap;
 
+              // Compute key estimate using the distances of the tame and wild DPs
+              uint32_t tameIdx = (herdTypes[i] == TAME) ? i : j;
+              uint32_t wildIdx = (herdTypes[i] == WILD) ? i : j;
+
+              // Decode packed distances back to Int values with their original sign
+              uint32_t decodedType;
+              Int tameDistance;
+              Int wildDistance;
+              HashTable::CalcDistAndType(rawDistances[tameIdx], &tameDistance, &decodedType);
+              HashTable::CalcDistAndType(rawDistances[wildIdx], &wildDistance, &decodedType);
+              (void)decodedType;
+
+              localKeyEstimate.Set(&wildDistance);
+              localKeyEstimate.ModSubK1order(&tameDistance);
+              keyComputed = true;
+
               // Update local minimum gap
               if(gap.i64[1] < localMinGap.i64[1] ||
                  (gap.i64[1] == localMinGap.i64[1] && gap.i64[0] < localMinGap.i64[0])) {
@@ -550,6 +580,11 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
          (localMinGap.i64[1] == lowestGap.i64[1] && localMinGap.i64[0] < lowestGap.i64[0])) {
         lowestGap.i64[0] = localMinGap.i64[0];
         lowestGap.i64[1] = localMinGap.i64[1];
+      }
+
+      if(keyComputed) {
+        lastKeyEstimate.Set(&localKeyEstimate);
+        hasKeyEstimate = true;
       }
 
       UNLOCK(ghMutex);
