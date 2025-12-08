@@ -592,11 +592,6 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
         }
       }
 
-      if(keyComputed) {
-        lastKeyEstimate.Set(&localKeyEstimate);
-        hasKeyEstimate = true;
-      }
-
       UNLOCK(ghMutex);
     }
 
