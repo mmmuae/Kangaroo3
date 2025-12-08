@@ -69,6 +69,8 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
   this->lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
   this->lowestGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+  this->lastKeyEstimate.SetInt32(0);
+  this->hasKeyEstimate = false;
 
   // Initialize DP tracking variables
   this->lastDPCount = 0;
@@ -1074,6 +1076,8 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
       minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
       lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
       lowestGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+      lastKeyEstimate.SetInt32(0);
+      hasKeyEstimate = false;
 
       // Reset DP tracking variables
       lastDPCount = 0;
