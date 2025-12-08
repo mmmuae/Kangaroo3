@@ -213,13 +213,28 @@ void Kangaroo::ProcessServer() {
     t1 = Timer::get_tick();
 
     if(!endOfSearch) {
+      // Snapshot gap and key estimate information together to keep display values in sync
+      int128_t displayLastGap;
+      int128_t displayLowestGap;
+      Int displayKeyEstimate;
+      bool displayHasKey = false;
+
+      LOCK(ghMutex);
+      displayLastGap = lastGap;
+      displayLowestGap = lowestGap;
+      displayHasKey = hasKeyEstimate;
+      if(displayHasKey) {
+        displayKeyEstimate.Set(&lastKeyEstimate);
+      }
+      UNLOCK(ghMutex);
+
       // Calculate tame/wild ratio (1.000 = 50/50)
       double twRatio = (wildCount > 0) ? ((double)tameCount / (double)wildCount) : 0.0;
 
       // Calculate compact gap values - convert to billions
       // Full 128-bit value: (high * 2^64 + low) / 1e9
-      double gap128 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
-      double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
+      double gap128 = (double)displayLastGap.i64[1] * 18446744073709551616.0 + (double)displayLastGap.i64[0];
+      double lowestGap128 = (double)displayLowestGap.i64[1] * 18446744073709551616.0 + (double)displayLowestGap.i64[0];
       double currentGap = gap128 / 1000000000.0;
       double lowest = lowestGap128 / 1000000000.0;
 
@@ -256,7 +271,7 @@ void Kangaroo::ProcessServer() {
       lastDPCount = currentDPs;
       lastDPTime = currentTime;
 
-      std::string keyEstimateStr = hasKeyEstimate ? lastKeyEstimate.GetBase10() : "n/a";
+      std::string keyEstimateStr = displayHasKey ? displayKeyEstimate.GetBase10() : "n/a";
 
       printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s][k_est: %s]  \033[F",
         (unsigned long long)currentDPs,
@@ -400,7 +415,18 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       lastDPCount = currentDPs;
       lastDPTime = currentTime;
 
-      std::string keyEstimateStr = hasKeyEstimate ? lastKeyEstimate.GetBase10() : "n/a";
+      // Snapshot the key estimate alongside the latest gap so it matches the displayed L.Gap
+      Int displayKeyEstimate;
+      bool displayHasKey = false;
+
+      LOCK(ghMutex);
+      displayHasKey = hasKeyEstimate;
+      if(displayHasKey) {
+        displayKeyEstimate.Set(&lastKeyEstimate);
+      }
+      UNLOCK(ghMutex);
+
+      std::string keyEstimateStr = displayHasKey ? displayKeyEstimate.GetBase10() : "n/a";
 
       printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s][k_est: %s]  \033[F",
         (unsigned long long)currentDPs,
