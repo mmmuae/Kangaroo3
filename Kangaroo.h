@@ -254,6 +254,8 @@ private:
   int128_t lastGap;
   int128_t minGap;
   int128_t lowestGap;
+  Int lastKeyEstimate;
+  bool hasKeyEstimate;
 
   // DP insertion tracking for progress display
   uint64_t lastDPCount;           // Last DP count for rate calculation
