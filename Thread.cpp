@@ -479,10 +479,13 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
 
     int128_t localLastGap = lastGap;
     bool gapFound = false;
-    bool keyComputed = false;
-
     Int localKeyEstimate;
     localKeyEstimate.SetInt32(0);
+
+    // Track the key estimate associated with the smallest gap found in this scan
+    Int minGapKeyEstimate;
+    minGapKeyEstimate.SetInt32(0);
+    bool hasMinGapKey = false;
 
     std::vector<int128_t> distances;
     std::vector<int128_t> rawDistances;
@@ -552,13 +555,15 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
 
               localKeyEstimate.Set(&wildDistance);
               localKeyEstimate.ModSubK1order(&tameDistance);
-              keyComputed = true;
 
-              // Update local minimum gap
+              // Update local minimum gap and remember its key estimate
               if(gap.i64[1] < localMinGap.i64[1] ||
                  (gap.i64[1] == localMinGap.i64[1] && gap.i64[0] < localMinGap.i64[0])) {
                 localMinGap.i64[0] = gap.i64[0];
                 localMinGap.i64[1] = gap.i64[1];
+
+                minGapKeyEstimate.Set(&localKeyEstimate);
+                hasMinGapKey = true;
               }
             }
           }
@@ -580,6 +585,11 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
          (localMinGap.i64[1] == lowestGap.i64[1] && localMinGap.i64[0] < lowestGap.i64[0])) {
         lowestGap.i64[0] = localMinGap.i64[0];
         lowestGap.i64[1] = localMinGap.i64[1];
+
+        if(hasMinGapKey) {
+          lastKeyEstimate.Set(&minGapKeyEstimate);
+          hasKeyEstimate = true;
+        }
       }
 
       if(keyComputed) {
