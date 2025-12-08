@@ -447,9 +447,9 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
     // Abort
     if(!clientMode && maxStep>0.0) {
-      double max = expectedNbOp * maxStep; 
+      double max = expectedNbOp * maxStep;
       if( (double)count > max ) {
-        ::printf("\nKey#%2d [XX]Pub:  0x%s \n",keyIdx,secp->GetPublicKeyHex(true,keysToSearch[keyIdx]).c_str());
+        ::printf("\n\nKey#%2d [XX]Pub:  0x%s \n",keyIdx,secp->GetPublicKeyHex(true,keysToSearch[keyIdx]).c_str());
         ::printf("       Aborted !\n");
         endOfSearch = true;
         Timer::SleepMillis(1000);

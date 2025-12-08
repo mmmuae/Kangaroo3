@@ -206,7 +206,7 @@ bool Kangaroo::Output(Int *pk,char sInfo,int sType) {
   }
 
   if(!needToClose)
-    ::printf("\n");
+    ::printf("\n\n");
 
   Point PR = secp->ComputePublicKey(pk);
 
