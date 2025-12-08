@@ -256,7 +256,7 @@ void Kangaroo::ProcessServer() {
       lastDPCount = currentDPs;
       lastDPTime = currentTime;
 
-      std::string keyEstimateStr = hasKeyEstimate ? ("0x" + lastKeyEstimate.GetBase16()) : "n/a";
+      std::string keyEstimateStr = hasKeyEstimate ? lastKeyEstimate.GetBase10() : "n/a";
 
       printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s][k_est: %s]  \033[F",
         (unsigned long long)currentDPs,
@@ -400,7 +400,7 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       lastDPCount = currentDPs;
       lastDPTime = currentTime;
 
-      std::string keyEstimateStr = hasKeyEstimate ? ("0x" + lastKeyEstimate.GetBase16()) : "n/a";
+      std::string keyEstimateStr = hasKeyEstimate ? lastKeyEstimate.GetBase10() : "n/a";
 
       printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s][k_est: %s]  \033[F",
         (unsigned long long)currentDPs,
