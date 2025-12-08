@@ -271,13 +271,14 @@ void Kangaroo::ProcessServer() {
         GetTimeStr(t1 - startTime).c_str()
         );
 
-      printf("\n\033[K[DP Count 2^%.2f/2^%.2f][Gap:%.1f][%s][DP Inserted: %llu][DP Rate: %.2f DP/s]  \033[F",
+      printf("\n\033[K[DP Count 2^%.2f/2^%.2f][Gap:%.1f][%s][DP Inserted: %llu][DP Rate: %.2f DP/s]%s  \033[F",
         log2((double)hashTable.GetNbItem()),
         log2(expectedNbOp / pow(2.0,dpSize)),
         currentGap,
         hashTable.GetSizeInfo().c_str(),
         (unsigned long long)currentDPs,
-        dpRate
+        dpRate,
+        maxStepExtended ? "[extended Scan]" : ""
         );
       fflush(stdout);
     }
@@ -428,12 +429,13 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
         );
       }
 
-      printf("\n\033[K[Count 2^%.2f][Gap:%.1f][%s][DP Inserted: %llu][DP Rate: %.2f DP/s]  \033[F",
+      printf("\n\033[K[Count 2^%.2f][Gap:%.1f][%s][DP Inserted: %llu][DP Rate: %.2f DP/s]%s  \033[F",
         log2((double)count + offsetCount),
         currentGap,
         hashTable.GetSizeInfo().c_str(),
         (unsigned long long)currentDPs,
-        dpRate
+        dpRate,
+        maxStepExtended ? "[extended Scan]" : ""
         );
       fflush(stdout);
 
@@ -451,10 +453,31 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
     if(!clientMode && maxStep>0.0) {
       double max = expectedNbOp * maxStep;
       if( (double)count > max ) {
-        ::printf("\n\nKey#%2d [XX]Pub:  0x%s \n",keyIdx,secp->GetPublicKeyHex(true,keysToSearch[keyIdx]).c_str());
-        ::printf("       Aborted !\n");
-        endOfSearch = true;
-        Timer::SleepMillis(1000);
+        // Check if we can extend based on l.gap
+        if(!maxStepExtended) {
+          // Calculate lowestGap in decimal form (divide by 1e9)
+          double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
+          double lowestGapDecimal = lowestGap128 / 1000000000.0;
+
+          if(lowestGapDecimal < 1000.0 && lowestGapDecimal > 0.0) {
+            // Extend scan by +2
+            maxStep += 2.0;
+            maxStepExtended = true;
+            // Continue scanning - don't abort yet
+          } else {
+            // Gap too large or not available, abort
+            ::printf("\n\nKey#%2d [XX]Pub:  0x%s \n",keyIdx,secp->GetPublicKeyHex(true,keysToSearch[keyIdx]).c_str());
+            ::printf("       Aborted !\n");
+            endOfSearch = true;
+            Timer::SleepMillis(1000);
+          }
+        } else {
+          // Already extended once, abort now
+          ::printf("\n\nKey#%2d [XX]Pub:  0x%s \n",keyIdx,secp->GetPublicKeyHex(true,keysToSearch[keyIdx]).c_str());
+          ::printf("       Aborted !\n");
+          endOfSearch = true;
+          Timer::SleepMillis(1000);
+        }
       }
     }
 
