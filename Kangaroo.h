@@ -270,6 +270,7 @@ private:
   double expectedNbOp;
   double expectedMem;
   double maxStep;
+  bool maxStepExtended;
   uint64_t totalRW;
 
   Int jumpDistance[NB_JUMP];

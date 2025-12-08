@@ -50,6 +50,7 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->saveKangaroo = saveKangaroo || this->saveKangarooByServer;
   this->fRead = NULL;
   this->maxStep = maxStep;
+  this->maxStepExtended = false;
   this->wtimeout = wtimeout;
   this->port = port;
   this->ntimeout = ntimeout;
@@ -1067,6 +1068,7 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
       InitSearchKey();
 
       endOfSearch = false;
+      maxStepExtended = false;
       collisionInSameHerd = 0;
       tameCount = 0;
       wildCount = 0;
