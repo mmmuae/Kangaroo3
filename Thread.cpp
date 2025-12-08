@@ -238,19 +238,6 @@ void Kangaroo::ProcessServer() {
       double currentGap = gap128 / 1000000000.0;
       double lowest = lowestGap128 / 1000000000.0;
 
-      // First line - original progress bar
-      printf("\r[Client %d][Kang 2^%.2f][DP Count 2^%.2f/2^%.2f][Dead %.0f][T/W:%.3f][Gap:%.1f][L.Gap:%.1f][%s][%s]  ",
-        connectedClient,
-        log2((double)totalRW),
-        log2((double)hashTable.GetNbItem()),
-        log2(expectedNbOp / pow(2.0,dpSize)),
-        (double)collisionInSameHerd,
-        twRatio,
-        currentGap, lowest,
-        GetTimeStr(t1 - startTime).c_str(),
-        hashTable.GetSizeInfo().c_str()
-        );
-
       // Second line - DP insertion metrics
       uint64_t currentDPs = hashTable.GetNbItem();
       double currentTime = t1 - startTime;
@@ -273,10 +260,24 @@ void Kangaroo::ProcessServer() {
 
       std::string keyEstimateStr = displayHasKey ? displayKeyEstimate.GetBase10() : "n/a";
 
-      printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s][k_est: %s]  \033[F",
+      // First line - original progress bar
+      printf("\r[Client %d][Kang 2^%.2f][Dead %.0f][T/W:%.3f][L.Gap:%.1f][k_est:%s][%s]  ",
+        connectedClient,
+        log2((double)totalRW),
+        (double)collisionInSameHerd,
+        twRatio,
+        lowest,
+        keyEstimateStr.c_str(),
+        GetTimeStr(t1 - startTime).c_str()
+        );
+
+      printf("\n\033[K[DP Count 2^%.2f/2^%.2f][Gap:%.1f][%s][DP Inserted: %llu][DP Rate: %.2f DP/s]  \033[F",
+        log2((double)hashTable.GetNbItem()),
+        log2(expectedNbOp / pow(2.0,dpSize)),
+        currentGap,
+        hashTable.GetSizeInfo().c_str(),
         (unsigned long long)currentDPs,
-        dpRate,
-        keyEstimateStr.c_str()
+        dpRate
         );
       fflush(stdout);
     }
@@ -371,30 +372,6 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       double currentGap = gap128 / 1000000000.0;
       double lowest = lowestGap128 / 1000000000.0;
 
-      // First line - original progress bar
-      if(clientMode) {
-        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][T/W:%.3f][Gap:%.1f][L.Gap:%.1f][%s][Server %6s]  ",
-          avgKeyRate / 1000000.0,unit.c_str(),
-          avgGpuKeyRate / 1000000.0,unit.c_str(),
-          log2((double)count + offsetCount),
-          twRatio,
-          currentGap, lowest,
-          GetTimeStr(t1 - startTime + offsetTime).c_str(),
-          serverStatus.c_str()
-          );
-      } else {
-        printf("\r[%.2f %s][GPU %.2f %s][Count 2^%.2f][Dead %.0f][T/W:%.3f][Gap:%.1f][L.Gap:%.1f][%s (Avg %s)][%s]  ",
-          avgKeyRate / 1000000.0,unit.c_str(),
-          avgGpuKeyRate / 1000000.0,unit.c_str(),
-          log2((double)count + offsetCount),
-          (double)collisionInSameHerd,
-          twRatio,
-          currentGap, lowest,
-          GetTimeStr(t1 - startTime + offsetTime).c_str(),GetTimeStr(expectedTime).c_str(),
-          hashTable.GetSizeInfo().c_str()
-        );
-      }
-
       // Second line - DP insertion metrics
       uint64_t currentDPs = hashTable.GetNbItem();
       double currentTime = t1 - startTime + offsetTime;
@@ -428,10 +405,35 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
       std::string keyEstimateStr = displayHasKey ? displayKeyEstimate.GetBase10() : "n/a";
 
-      printf("\n\033[K[DP Inserted: %llu][DP Rate: %.2f DP/s][k_est: %s]  \033[F",
+      // First line - original progress bar
+      if(clientMode) {
+        printf("\r[%.2f %s][GPU %.2f %s][T/W:%.3f][L.Gap:%.1f][k_est:%s][%s][Server %6s]  ",
+          avgKeyRate / 1000000.0,unit.c_str(),
+          avgGpuKeyRate / 1000000.0,unit.c_str(),
+          twRatio,
+          lowest,
+          keyEstimateStr.c_str(),
+          GetTimeStr(t1 - startTime + offsetTime).c_str(),
+          serverStatus.c_str()
+          );
+      } else {
+        printf("\r[%.2f %s][GPU %.2f %s][Dead %.0f][T/W:%.3f][L.Gap:%.1f][k_est:%s][%s (Avg %s)]  ",
+          avgKeyRate / 1000000.0,unit.c_str(),
+          avgGpuKeyRate / 1000000.0,unit.c_str(),
+          (double)collisionInSameHerd,
+          twRatio,
+          lowest,
+          keyEstimateStr.c_str(),
+          GetTimeStr(t1 - startTime + offsetTime).c_str(),GetTimeStr(expectedTime).c_str()
+        );
+      }
+
+      printf("\n\033[K[Count 2^%.2f][Gap:%.1f][%s][DP Inserted: %llu][DP Rate: %.2f DP/s]  \033[F",
+        log2((double)count + offsetCount),
+        currentGap,
+        hashTable.GetSizeInfo().c_str(),
         (unsigned long long)currentDPs,
-        dpRate,
-        keyEstimateStr.c_str()
+        dpRate
         );
       fflush(stdout);
 
