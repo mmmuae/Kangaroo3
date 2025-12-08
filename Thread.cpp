@@ -579,8 +579,13 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
               HashTable::CalcDistAndType(rawDistances[wildIdx], &wildDistance, &decodedType);
               (void)decodedType;
 
-              localKeyEstimate.Set(&wildDistance);
-              localKeyEstimate.ModSubK1order(&tameDistance);
+              // Use the same formula as CheckKey to estimate the actual private key
+              localKeyEstimate.Set(&tameDistance);
+              localKeyEstimate.ModAddK1order(&wildDistance);
+#ifdef USE_SYMMETRY
+              localKeyEstimate.ModAddK1order(&rangeWidthDiv2);
+#endif
+              localKeyEstimate.ModAddK1order(&rangeStart);
 
               // Update local minimum gap and remember its key estimate
               if(gap.i64[1] < localMinGap.i64[1] ||
