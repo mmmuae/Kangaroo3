@@ -66,10 +66,16 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->wildCount = 0;
   this->lastGap.i64[0] = 0;
   this->lastGap.i64[1] = 0;
+  this->lastGap.i64[2] = 0;
+  this->lastGap.i64[3] = 0;
   this->minGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
-  this->minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+  this->minGap.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
+  this->minGap.i64[2] = 0xFFFFFFFFFFFFFFFFULL;
+  this->minGap.i64[3] = 0xFFFFFFFFFFFFFFFFULL;
   this->lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
-  this->lowestGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+  this->lowestGap.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
+  this->lowestGap.i64[2] = 0xFFFFFFFFFFFFFFFFULL;
+  this->lowestGap.i64[3] = 0xFFFFFFFFFFFFFFFFULL;
   this->lastKeyEstimate.SetInt32(0);
   this->hasKeyEstimate = false;
 
@@ -338,21 +344,19 @@ bool Kangaroo::AddToTable(Int *pos,Int *dist,uint32_t kType) {
 
 }
 
-bool Kangaroo::AddToTable(uint64_t h,int128_t *x,int128_t *d) {
+bool Kangaroo::AddToTable(uint64_t h,int256_t *x,int256_t *d,uint32_t kType) {
 
-  int addStatus = hashTable.Add(h,x,d);
+  int addStatus = hashTable.Add(h,x,d,kType);
   if(addStatus== ADD_COLLISION) {
 
     Int dist;
-    uint32_t kType;
-    HashTable::CalcDistAndType(*d,&dist,&kType);
+    HashTable::CalcDist(d,&dist);
     return CollisionCheck(&hashTable.kDist,hashTable.kType,&dist,kType);
 
   }
 
   // Track tame/wild DP counts
   if(addStatus == ADD_OK) {
-    uint32_t kType = (d->i64[1] & 0x4000000000000000ULL) != 0;
     if(kType == 0) {
       tameCount++;
     } else {
