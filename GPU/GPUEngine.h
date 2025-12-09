@@ -23,12 +23,12 @@
 #include "../SECPK1/SECP256k1.h"
 
 #ifdef USE_SYMMETRY
-#define KSIZE 11
+#define KSIZE 13
 #else
-#define KSIZE 10
+#define KSIZE 12
 #endif
 
-#define ITEM_SIZE   56
+#define ITEM_SIZE   72
 #define ITEM_SIZE32 (ITEM_SIZE/4)
 
 typedef struct {
