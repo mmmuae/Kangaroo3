@@ -196,7 +196,7 @@ void Kangaroo::ProcessServer() {
       DP_CACHE dp = localCache[i];
       for(int j = 0; j<(int)dp.nbDP && !endOfSearch; j++) {
         uint64_t h = dp.dp[j].h;
-        if(!AddToTable(h,&dp.dp[j].x,&dp.dp[j].d)) {
+        if(!AddToTable(h,&dp.dp[j].x,&dp.dp[j].d,dp.dp[j].kType)) {
           // Collision inside the same herd
           collisionInSameHerd++;
         }
@@ -214,8 +214,8 @@ void Kangaroo::ProcessServer() {
 
     if(!endOfSearch) {
       // Snapshot gap and key estimate information together to keep display values in sync
-      int128_t displayLastGap;
-      int128_t displayLowestGap;
+      int256_t displayLastGap;
+      int256_t displayLowestGap;
       Int displayKeyEstimate;
       bool displayHasKey = false;
 
@@ -232,7 +232,7 @@ void Kangaroo::ProcessServer() {
       double twRatio = (wildCount > 0) ? ((double)tameCount / (double)wildCount) : 0.0;
 
       // Calculate compact gap values - convert to billions
-      // Full 128-bit value: (high * 2^64 + low) / 1e9
+      // Full 256-bit value approximation (using lower 128 bits for display)
       double gap128 = (double)displayLastGap.i64[1] * 18446744073709551616.0 + (double)displayLastGap.i64[0];
       double lowestGap128 = (double)displayLowestGap.i64[1] * 18446744073709551616.0 + (double)displayLowestGap.i64[0];
       double currentGap = gap128 / 1000000000.0;
@@ -524,11 +524,13 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
     if(endOfSearch) break;
 
     // Scan hash table for gaps
-    int128_t localMinGap;
+    int256_t localMinGap;
     localMinGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
-    localMinGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+    localMinGap.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
+    localMinGap.i64[2] = 0xFFFFFFFFFFFFFFFFULL;
+    localMinGap.i64[3] = 0xFFFFFFFFFFFFFFFFULL;
 
-    int128_t localLastGap = lastGap;
+    int256_t localLastGap = lastGap;
     bool gapFound = false;
     Int localKeyEstimate;
     localKeyEstimate.SetInt32(0);
@@ -538,8 +540,8 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
     minGapKeyEstimate.SetInt32(0);
     bool hasMinGapKey = false;
 
-    std::vector<int128_t> distances;
-    std::vector<int128_t> rawDistances;
+    std::vector<int256_t> distances;
+    std::vector<int256_t> rawDistances;
     std::vector<uint32_t> herdTypes;
 
     // Scan through all hash buckets
@@ -559,10 +561,9 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
 
         for(uint32_t i = 0; i < nbItem; i++) {
           ENTRY* entry = hashTable.E[h].items[i];
-          int128_t dist = entry->d;
-          uint32_t type = (dist.i64[1] & 0x4000000000000000ULL) != 0;
+          int256_t dist = entry->d;
+          uint32_t type = entry->kType;
           rawDistances.push_back(dist);
-          dist.i64[1] &= 0x3FFFFFFFFFFFFFFFULL;
 
           distances.push_back(dist);
           herdTypes.push_back(type);
@@ -577,16 +578,39 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
           for(uint32_t j = i + 1; j < nbStored && !endOfSearch; j++) {
             if(herdTypes[i] != herdTypes[j]) {
               // Calculate absolute difference in distances
-              int128_t gap;
-              if(distances[i].i64[1] > distances[j].i64[1] ||
-                 (distances[i].i64[1] == distances[j].i64[1] && distances[i].i64[0] > distances[j].i64[0])) {
-                gap.i64[1] = distances[i].i64[1] - distances[j].i64[1];
-                gap.i64[0] = distances[i].i64[0] - distances[j].i64[0];
-                if(distances[i].i64[0] < distances[j].i64[0]) gap.i64[1]--;
+              int256_t gap;
+              // Compare from most significant to least significant
+              bool i_greater = false;
+              if(distances[i].i64[3] != distances[j].i64[3]) {
+                i_greater = distances[i].i64[3] > distances[j].i64[3];
+              } else if(distances[i].i64[2] != distances[j].i64[2]) {
+                i_greater = distances[i].i64[2] > distances[j].i64[2];
+              } else if(distances[i].i64[1] != distances[j].i64[1]) {
+                i_greater = distances[i].i64[1] > distances[j].i64[1];
               } else {
-                gap.i64[1] = distances[j].i64[1] - distances[i].i64[1];
+                i_greater = distances[i].i64[0] > distances[j].i64[0];
+              }
+
+              if(i_greater) {
+                // i > j: gap = i - j
+                uint64_t borrow = 0;
+                gap.i64[0] = distances[i].i64[0] - distances[j].i64[0];
+                borrow = (distances[i].i64[0] < distances[j].i64[0]) ? 1 : 0;
+                gap.i64[1] = distances[i].i64[1] - distances[j].i64[1] - borrow;
+                borrow = (distances[i].i64[1] < distances[j].i64[1] + borrow) ? 1 : 0;
+                gap.i64[2] = distances[i].i64[2] - distances[j].i64[2] - borrow;
+                borrow = (distances[i].i64[2] < distances[j].i64[2] + borrow) ? 1 : 0;
+                gap.i64[3] = distances[i].i64[3] - distances[j].i64[3] - borrow;
+              } else {
+                // j >= i: gap = j - i
+                uint64_t borrow = 0;
                 gap.i64[0] = distances[j].i64[0] - distances[i].i64[0];
-                if(distances[j].i64[0] < distances[i].i64[0]) gap.i64[1]--;
+                borrow = (distances[j].i64[0] < distances[i].i64[0]) ? 1 : 0;
+                gap.i64[1] = distances[j].i64[1] - distances[i].i64[1] - borrow;
+                borrow = (distances[j].i64[1] < distances[i].i64[1] + borrow) ? 1 : 0;
+                gap.i64[2] = distances[j].i64[2] - distances[i].i64[2] - borrow;
+                borrow = (distances[j].i64[2] < distances[i].i64[2] + borrow) ? 1 : 0;
+                gap.i64[3] = distances[j].i64[3] - distances[i].i64[3] - borrow;
               }
 
               gapFound = true;
@@ -596,13 +620,11 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
               uint32_t tameIdx = (herdTypes[i] == TAME) ? i : j;
               uint32_t wildIdx = (herdTypes[i] == WILD) ? i : j;
 
-              // Decode packed distances back to Int values with their original sign
-              uint32_t decodedType;
+              // Convert raw distances to Int values
               Int tameDistance;
               Int wildDistance;
-              HashTable::CalcDistAndType(rawDistances[tameIdx], &tameDistance, &decodedType);
-              HashTable::CalcDistAndType(rawDistances[wildIdx], &wildDistance, &decodedType);
-              (void)decodedType;
+              HashTable::CalcDist(&rawDistances[tameIdx], &tameDistance);
+              HashTable::CalcDist(&rawDistances[wildIdx], &wildDistance);
 
               // Use the same formula as CheckKey to estimate the actual private key
               localKeyEstimate.Set(&tameDistance);
@@ -613,10 +635,22 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
               localKeyEstimate.ModAddK1order(&rangeStart);
 
               // Update local minimum gap and remember its key estimate
-              if(gap.i64[1] < localMinGap.i64[1] ||
-                 (gap.i64[1] == localMinGap.i64[1] && gap.i64[0] < localMinGap.i64[0])) {
+              bool is_smaller = false;
+              if(gap.i64[3] != localMinGap.i64[3]) {
+                is_smaller = gap.i64[3] < localMinGap.i64[3];
+              } else if(gap.i64[2] != localMinGap.i64[2]) {
+                is_smaller = gap.i64[2] < localMinGap.i64[2];
+              } else if(gap.i64[1] != localMinGap.i64[1]) {
+                is_smaller = gap.i64[1] < localMinGap.i64[1];
+              } else {
+                is_smaller = gap.i64[0] < localMinGap.i64[0];
+              }
+
+              if(is_smaller) {
                 localMinGap.i64[0] = gap.i64[0];
                 localMinGap.i64[1] = gap.i64[1];
+                localMinGap.i64[2] = gap.i64[2];
+                localMinGap.i64[3] = gap.i64[3];
 
                 minGapKeyEstimate.Set(&localKeyEstimate);
                 hasMinGapKey = true;
@@ -632,15 +666,31 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
       LOCK(ghMutex);
       lastGap.i64[0] = localLastGap.i64[0];
       lastGap.i64[1] = localLastGap.i64[1];
+      lastGap.i64[2] = localLastGap.i64[2];
+      lastGap.i64[3] = localLastGap.i64[3];
 
       minGap.i64[0] = localMinGap.i64[0];
       minGap.i64[1] = localMinGap.i64[1];
+      minGap.i64[2] = localMinGap.i64[2];
+      minGap.i64[3] = localMinGap.i64[3];
 
       // Update lowestGap only if this is a new all-time minimum
-      if(localMinGap.i64[1] < lowestGap.i64[1] ||
-         (localMinGap.i64[1] == lowestGap.i64[1] && localMinGap.i64[0] < lowestGap.i64[0])) {
+      bool is_new_lowest = false;
+      if(localMinGap.i64[3] != lowestGap.i64[3]) {
+        is_new_lowest = localMinGap.i64[3] < lowestGap.i64[3];
+      } else if(localMinGap.i64[2] != lowestGap.i64[2]) {
+        is_new_lowest = localMinGap.i64[2] < lowestGap.i64[2];
+      } else if(localMinGap.i64[1] != lowestGap.i64[1]) {
+        is_new_lowest = localMinGap.i64[1] < lowestGap.i64[1];
+      } else {
+        is_new_lowest = localMinGap.i64[0] < lowestGap.i64[0];
+      }
+
+      if(is_new_lowest) {
         lowestGap.i64[0] = localMinGap.i64[0];
         lowestGap.i64[1] = localMinGap.i64[1];
+        lowestGap.i64[2] = localMinGap.i64[2];
+        lowestGap.i64[3] = localMinGap.i64[3];
 
         if(hasMinGapKey) {
           lastKeyEstimate.Set(&minGapKeyEstimate);
