@@ -28,7 +28,7 @@
 #define KSIZE 12
 #endif
 
-#define ITEM_SIZE   72
+#define ITEM_SIZE   76
 #define ITEM_SIZE32 (ITEM_SIZE/4)
 
 typedef struct {
