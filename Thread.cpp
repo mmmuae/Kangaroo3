@@ -232,11 +232,22 @@ void Kangaroo::ProcessServer() {
       double twRatio = (wildCount > 0) ? ((double)tameCount / (double)wildCount) : 0.0;
 
       // Calculate compact gap values - convert to billions
-      // Full 256-bit value approximation (using lower 128 bits for display)
-      double gap128 = (double)displayLastGap.i64[1] * 18446744073709551616.0 + (double)displayLastGap.i64[0];
-      double lowestGap128 = (double)displayLowestGap.i64[1] * 18446744073709551616.0 + (double)displayLowestGap.i64[0];
-      double currentGap = gap128 / 1000000000.0;
-      double lowest = lowestGap128 / 1000000000.0;
+      // For 256-bit: check if upper bits are set, otherwise use lower 128 bits
+      double gap256, lowestGap256;
+      if(displayLastGap.i64[3] != 0 || displayLastGap.i64[2] != 0) {
+        // Use upper 128 bits for very large gaps (scaled down)
+        gap256 = (double)displayLastGap.i64[3] * 18446744073709551616.0 + (double)displayLastGap.i64[2];
+      } else {
+        // Use lower 128 bits for normal-sized gaps
+        gap256 = (double)displayLastGap.i64[1] * 18446744073709551616.0 + (double)displayLastGap.i64[0];
+      }
+      if(displayLowestGap.i64[3] != 0 || displayLowestGap.i64[2] != 0) {
+        lowestGap256 = (double)displayLowestGap.i64[3] * 18446744073709551616.0 + (double)displayLowestGap.i64[2];
+      } else {
+        lowestGap256 = (double)displayLowestGap.i64[1] * 18446744073709551616.0 + (double)displayLowestGap.i64[0];
+      }
+      double currentGap = gap256 / 1000000000.0;
+      double lowest = lowestGap256 / 1000000000.0;
 
       // Second line - DP insertion metrics
       uint64_t currentDPs = hashTable.GetNbItem();
@@ -367,11 +378,22 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       double twRatio = (wildCount > 0) ? ((double)tameCount / (double)wildCount) : 0.0;
 
       // Calculate compact gap values - convert to billions
-      // Full 128-bit value: (high * 2^64 + low) / 1e9
-      double gap128 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
-      double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
-      double currentGap = gap128 / 1000000000.0;
-      double lowest = lowestGap128 / 1000000000.0;
+      // For 256-bit: check if upper bits are set, otherwise use lower 128 bits
+      double gap256, lowestGap256;
+      if(lastGap.i64[3] != 0 || lastGap.i64[2] != 0) {
+        // Use upper 128 bits for very large gaps (scaled down)
+        gap256 = (double)lastGap.i64[3] * 18446744073709551616.0 + (double)lastGap.i64[2];
+      } else {
+        // Use lower 128 bits for normal-sized gaps
+        gap256 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
+      }
+      if(lowestGap.i64[3] != 0 || lowestGap.i64[2] != 0) {
+        lowestGap256 = (double)lowestGap.i64[3] * 18446744073709551616.0 + (double)lowestGap.i64[2];
+      } else {
+        lowestGap256 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
+      }
+      double currentGap = gap256 / 1000000000.0;
+      double lowest = lowestGap256 / 1000000000.0;
 
       // Second line - DP insertion metrics
       uint64_t currentDPs = hashTable.GetNbItem();
