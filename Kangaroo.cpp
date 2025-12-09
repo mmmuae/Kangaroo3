@@ -1078,10 +1078,16 @@ void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize
       wildCount = 0;
       lastGap.i64[0] = 0;
       lastGap.i64[1] = 0;
+      lastGap.i64[2] = 0;
+      lastGap.i64[3] = 0;
       minGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
-      minGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+      minGap.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
+      minGap.i64[2] = 0xFFFFFFFFFFFFFFFFULL;
+      minGap.i64[3] = 0xFFFFFFFFFFFFFFFFULL;
       lowestGap.i64[0] = 0xFFFFFFFFFFFFFFFFULL;
-      lowestGap.i64[1] = 0x3FFFFFFFFFFFFFFFULL;
+      lowestGap.i64[1] = 0xFFFFFFFFFFFFFFFFULL;
+      lowestGap.i64[2] = 0xFFFFFFFFFFFFFFFFULL;
+      lowestGap.i64[3] = 0xFFFFFFFFFFFFFFFFULL;
       lastKeyEstimate.SetInt32(0);
       hasKeyEstimate = false;
 
