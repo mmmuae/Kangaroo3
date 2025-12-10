@@ -101,6 +101,7 @@ public:
   uint32_t kType;
 
   static void Convert(Int *x,Int *d,uint32_t type,uint64_t *h,int256_t *X,int256_t *D);
+  static uint64_t HashIndex(const Int *x);
   static int MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t *nbDP,uint32_t* duplicate,
                     Int* d1,uint32_t* k1,Int* d2,uint32_t* k2);
   static void CalcDist(int256_t *d,Int* kDist);
