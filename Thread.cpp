@@ -179,6 +179,14 @@ void Kangaroo::ProcessServer() {
   ghMutex = CreateMutex(NULL,FALSE,NULL);
 #endif
 
+  uint32_t scanOffset = 0;
+  uint32_t bucketsPerScan = HASH_SIZE >> 3; // scan 1/8th of the table per pass
+  if(bucketsPerScan == 0) bucketsPerScan = 1;
+
+  std::vector<int256_t> distances;
+  std::vector<int256_t> rawDistances;
+  std::vector<uint32_t> herdTypes;
+
   while(!endOfSearch) {
 
     t0 = Timer::get_tick();
