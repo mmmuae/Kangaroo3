@@ -121,6 +121,11 @@ int _ConvertSMVer2Cores(int major,int minor) {
     { 0x70,  64 },
     { 0x72,  64 },
     { 0x75,  64 },
+    { 0x80,  64 },
+    { 0x86, 128 },
+    { 0x87, 128 },
+    { 0x89, 128 },
+    { 0x90, 128 },
     { -1, -1 } };
 
   int index = 0;
@@ -132,6 +137,10 @@ int _ConvertSMVer2Cores(int major,int minor) {
 
     index++;
   }
+
+  if(major >= 9) return 128;
+  if(major >= 8) return 128;
+  if(major >= 7) return 64;
 
   return 0;
 
@@ -171,6 +180,11 @@ GPUEngine::GPUEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuId,uint32_t m
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp,gpuId);
 
+  int cores = _ConvertSMVer2Cores(deviceProp.major,deviceProp.minor);
+  if(cores == 0 && deviceProp.maxThreadsPerMultiprocessor > 0 && deviceProp.warpSize > 0) {
+    cores = deviceProp.maxThreadsPerMultiprocessor / deviceProp.warpSize;
+  }
+
   this->nbThread = nbThreadGroup * nbThreadPerGroup;
   this->maxFound = maxFound;
   this->outputSize = (maxFound*ITEM_SIZE + 4);
@@ -178,7 +192,7 @@ GPUEngine::GPUEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuId,uint32_t m
   char tmp[512];
   sprintf(tmp,"GPU #%d %s (%dx%d cores) Grid(%dx%d)",
     gpuId,deviceProp.name,deviceProp.multiProcessorCount,
-    _ConvertSMVer2Cores(deviceProp.major,deviceProp.minor),
+    cores,
     nbThread / nbThreadPerGroup,
     nbThreadPerGroup);
   deviceName = std::string(tmp);
@@ -298,9 +312,24 @@ bool GPUEngine::GetGridSize(int gpuId,int *x,int *y) {
     cudaDeviceProp deviceProp;
     cudaGetDeviceProperties(&deviceProp,gpuId);
 
-    if(*x <= 0) *x = 2 * deviceProp.multiProcessorCount;
-    if(*y <= 0) *y = 2 * _ConvertSMVer2Cores(deviceProp.major,deviceProp.minor);
-    if(*y <= 0) *y = 128;
+    if(*x <= 0) {
+      *x = 2 * deviceProp.multiProcessorCount;
+      if(*x <= 0) *x = 1;
+    }
+
+    if(*y <= 0) {
+      int cores = _ConvertSMVer2Cores(deviceProp.major,deviceProp.minor);
+      if(cores == 0 && deviceProp.maxThreadsPerMultiprocessor > 0 && deviceProp.warpSize > 0) {
+        cores = deviceProp.maxThreadsPerMultiprocessor / deviceProp.warpSize;
+      }
+
+      int suggested = (cores > 0) ? 2 * cores : 256;
+      int maxBlock = (deviceProp.maxThreadsPerBlock > 0 ? deviceProp.maxThreadsPerBlock : 1024);
+      if(suggested > maxBlock) suggested = maxBlock;
+      if(suggested <= 0) suggested = 128;
+
+      *y = suggested;
+    }
 
   }
 
@@ -514,44 +543,44 @@ void GPUEngine::SetKangaroo(uint64_t kIdx,Int *px,Int *py,Int *d) {
   uint64_t g = (kIdx / nbThreadPerGroup) % GPU_GRP_SIZE;
   uint64_t b = kIdx / (nbThreadPerGroup*GPU_GRP_SIZE);
 
+  uint64_t staging[KSIZE];
+
   // X
-  inputKangarooPinned[0] = px->bits64[0];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 0 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = px->bits64[1];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 1 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = px->bits64[2];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 2 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = px->bits64[3];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 3 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  staging[0] = px->bits64[0];
+  staging[1] = px->bits64[1];
+  staging[2] = px->bits64[2];
+  staging[3] = px->bits64[3];
 
   // Y
-  inputKangarooPinned[0] = py->bits64[0];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 4 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = py->bits64[1];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 5 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = py->bits64[2];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 6 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = py->bits64[3];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 7 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  staging[4] = py->bits64[0];
+  staging[5] = py->bits64[1];
+  staging[6] = py->bits64[2];
+  staging[7] = py->bits64[3];
 
   // D
   Int dOff;
   dOff.Set(d);
   if(kIdx % 2 == WILD) dOff.ModAddK1order(&wildOffset);
-  inputKangarooPinned[0] = dOff.bits64[0];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 8 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = dOff.bits64[1];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 9 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = dOff.bits64[2];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 10 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
-  inputKangarooPinned[0] = dOff.bits64[3];
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 11 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  staging[8] = dOff.bits64[0];
+  staging[9] = dOff.bits64[1];
+  staging[10] = dOff.bits64[2];
+  staging[11] = dOff.bits64[3];
 
 #ifdef USE_SYMMETRY
-  // Last jump
-  inputKangarooPinned[0] = (uint64_t)NB_JUMP;
-  cudaMemcpy(inputKangaroo + (b * blockSize + g * strideSize + t + 12 * nbThreadPerGroup),inputKangarooPinned,8,cudaMemcpyHostToDevice);
+  staging[12] = (uint64_t)NB_JUMP;
 #endif
+
+  size_t dstPitch = nbThreadPerGroup * sizeof(uint64_t);
+  size_t width = sizeof(uint64_t);
+  size_t height = KSIZE;
+
+  cudaMemcpy2D(inputKangaroo + (b * blockSize + g * strideSize + t), dstPitch,
+               staging, width, width, height, cudaMemcpyHostToDevice);
+
+  cudaError_t err = cudaGetLastError();
+  if(err != cudaSuccess) {
+    printf("GPUEngine: SetKangaroo: %s\n",cudaGetErrorString(err));
+  }
 
 }
 
