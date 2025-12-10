@@ -25,14 +25,22 @@
 //#define USE_SYMMETRY
 
 // Number of random jumps
-// Max 512 for the GPU
-#define NB_JUMP 32
+// Max 512 for the GPU (constant memory limit is 64KB)
+// Larger jump tables reduce average jump distance overhead and improve performance
+// Current: 256 jumps = 24KB constant memory (3 arrays * 256 * 4 * 8 bytes)
+#define NB_JUMP 256
 
-// GPU group size
+// GPU group size (number of kangaroos processed together for batch modular inversion)
 #define GPU_GRP_SIZE 128
 
-// GPU number of run per kernel call
-#define NB_RUN 64
+// Optimal thread block size for modern GPUs (Ada/Blackwell)
+// Used for __launch_bounds__ hint to compiler for register optimization
+#define GPU_BLOCK_SIZE 256
+
+// GPU number of runs per kernel call
+// Higher values amortize kernel launch overhead and improve GPU occupancy
+// Increased from 64 to 192 for better performance on modern GPUs
+#define NB_RUN 192
 
 // Kangaroo type
 #define TAME 0  // Tame kangaroo
