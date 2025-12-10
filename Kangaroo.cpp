@@ -796,7 +796,7 @@ void Kangaroo::CreateJumpTable() {
   int jumpBit = rangePower / 2 + 1;
 #endif
 
-  if(jumpBit > 128) jumpBit = 128;
+  if(jumpBit > 256) jumpBit = 256;
   int maxRetry = 100;
   bool ok = false;
   double distAvg;
