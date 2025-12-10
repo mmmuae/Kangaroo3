@@ -30,6 +30,15 @@ HashTable::HashTable() {
   
 }
 
+uint64_t HashTable::HashIndex(const Int *x) {
+
+  // Use the middle 64 bits (bits64[2]) to build the bucket index. This matches
+  // the DP hashing used by GPU/CPU walkers and network validation so every
+  // code path agrees on where a DP should be stored.
+  return (x->bits64[2] & HASH_MASK);
+
+}
+
 void HashTable::Reset() {
 
   for(uint32_t h = 0; h < HASH_SIZE; h++) {
@@ -91,15 +100,7 @@ void HashTable::Convert(Int *x,Int *d,uint32_t type,uint64_t *h,int256_t *X,int2
   D->i64[2] = d->bits64[2];
   D->i64[3] = d->bits64[3];
 
-  // Mix all 256 bits of the position to build the bucket index
-  uint64_t mix = x->bits64[2] ^ (x->bits64[3] * 0x9E3779B97F4A7C15ULL);
-  mix ^= (x->bits64[1] * 0xC2B2AE3D27D4EB4FULL);
-  mix ^= (x->bits64[0] << 13) | (x->bits64[0] >> 51);
-  mix ^= mix >> 33;
-  mix *= 0xff51afd7ed558ccdULL;
-  mix ^= mix >> 33;
-
-  *h = (mix & HASH_MASK);
+  *h = HashIndex(x);
 
 }
 

@@ -88,7 +88,7 @@ uint32_t Kangaroo::CheckHash(uint32_t h,uint32_t nbItem,HashTable* hT,FILE* f) {
     if(hT)    e = hT->E[h].items[i];
     else      e = items + i;
 
-    uint32_t hC = S[i].x.bits64[2] & HASH_MASK;
+    uint32_t hC = (uint32_t)HashTable::HashIndex(&S[i].x);
     ok = (hC == h) && (S[i].x.bits64[0] == e->x.i64[0]) && (S[i].x.bits64[1] == e->x.i64[1]);
     if(!ok) nbWrong++;
     //if(!ok) {

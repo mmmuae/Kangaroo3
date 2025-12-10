@@ -565,7 +565,7 @@ bool Kangaroo::HandleRequest(TH_PARAM *p) {
             if(kType == WILD)
               P = secp->AddDirect(keyToSearch,P);
 
-            uint32_t hC = P.x.bits64[2] & HASH_MASK;
+            uint32_t hC = (uint32_t)HashTable::HashIndex(&P.x);
             bool ok = (hC == h) && (P.x.bits64[0] == dp[i].x.i64[0]) && (P.x.bits64[1] == dp[i].x.i64[1]) &&
                       (P.x.bits64[2] == dp[i].x.i64[2]) && (P.x.bits64[3] == dp[i].x.i64[3]);
             if(!ok) {

@@ -603,55 +603,31 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
         for(uint32_t i = 0; i < nbStored - 1 && !endOfSearch; i++) {
           for(uint32_t j = i + 1; j < nbStored && !endOfSearch; j++) {
             if(herdTypes[i] != herdTypes[j]) {
-              // Calculate absolute difference in distances
-              int256_t gap;
-              // Compare from most significant to least significant
-              bool i_greater = false;
-              if(distances[i].i64[3] != distances[j].i64[3]) {
-                i_greater = distances[i].i64[3] > distances[j].i64[3];
-              } else if(distances[i].i64[2] != distances[j].i64[2]) {
-                i_greater = distances[i].i64[2] > distances[j].i64[2];
-              } else if(distances[i].i64[1] != distances[j].i64[1]) {
-                i_greater = distances[i].i64[1] > distances[j].i64[1];
-              } else {
-                i_greater = distances[i].i64[0] > distances[j].i64[0];
-              }
-
-              if(i_greater) {
-                // i > j: gap = i - j
-                uint64_t borrow = 0;
-                gap.i64[0] = distances[i].i64[0] - distances[j].i64[0];
-                borrow = (distances[i].i64[0] < distances[j].i64[0]) ? 1 : 0;
-                gap.i64[1] = distances[i].i64[1] - distances[j].i64[1] - borrow;
-                borrow = (distances[i].i64[1] < distances[j].i64[1] + borrow) ? 1 : 0;
-                gap.i64[2] = distances[i].i64[2] - distances[j].i64[2] - borrow;
-                borrow = (distances[i].i64[2] < distances[j].i64[2] + borrow) ? 1 : 0;
-                gap.i64[3] = distances[i].i64[3] - distances[j].i64[3] - borrow;
-              } else {
-                // j >= i: gap = j - i
-                uint64_t borrow = 0;
-                gap.i64[0] = distances[j].i64[0] - distances[i].i64[0];
-                borrow = (distances[j].i64[0] < distances[i].i64[0]) ? 1 : 0;
-                gap.i64[1] = distances[j].i64[1] - distances[i].i64[1] - borrow;
-                borrow = (distances[j].i64[1] < distances[i].i64[1] + borrow) ? 1 : 0;
-                gap.i64[2] = distances[j].i64[2] - distances[i].i64[2] - borrow;
-                borrow = (distances[j].i64[2] < distances[i].i64[2] + borrow) ? 1 : 0;
-                gap.i64[3] = distances[j].i64[3] - distances[i].i64[3] - borrow;
-              }
-
-              gapFound = true;
-              localLastGap = gap;
-
-              // Compute key estimate using the distances of the tame and wild DPs
               uint32_t tameIdx = (herdTypes[i] == TAME) ? i : j;
               uint32_t wildIdx = (herdTypes[i] == WILD) ? i : j;
 
-              // Convert raw distances to Int values
+              // Calculate absolute difference in distances using Int math so
+              // the gap follows the same modulo semantics as collision checks
               Int tameDistance;
               Int wildDistance;
               HashTable::CalcDist(&rawDistances[tameIdx], &tameDistance);
               HashTable::CalcDist(&rawDistances[wildIdx], &wildDistance);
 
+              Int gapInt;
+              gapInt.Set(&tameDistance);
+              gapInt.Sub(&wildDistance);
+              gapInt.Abs();
+
+              int256_t gap;
+              gap.i64[0] = gapInt.bits64[0];
+              gap.i64[1] = gapInt.bits64[1];
+              gap.i64[2] = gapInt.bits64[2];
+              gap.i64[3] = gapInt.bits64[3];
+
+              gapFound = true;
+              localLastGap = gap;
+
+              // Compute key estimate using the distances of the tame and wild DPs
               // Use the same formula as CheckKey to estimate the actual private key
               localKeyEstimate.Set(&tameDistance);
               localKeyEstimate.ModAddK1order(&wildDistance);
