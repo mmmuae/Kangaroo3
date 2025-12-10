@@ -641,12 +641,37 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
 
               // Compute key estimate using the distances of the tame and wild DPs
               // Use the same formula as CheckKey to estimate the actual private key
-              localKeyEstimate.Set(&tameDistance);
-              localKeyEstimate.ModAddK1order(&wildDistance);
+              // Try both (tame - wild) and (wild - tame) since we don't know which is ahead
+              Int keyEst1, keyEst2;
+
+              // Try type=2: tame - wild
+              keyEst1.Set(&tameDistance);
+              keyEst1.ModSubK1order(&wildDistance);
 #ifdef USE_SYMMETRY
-              localKeyEstimate.ModAddK1order(&rangeWidthDiv2);
+              keyEst1.ModAddK1order(&rangeWidthDiv2);
 #endif
-              localKeyEstimate.ModAddK1order(&rangeStart);
+              keyEst1.ModAddK1order(&rangeStart);
+
+              // Try type=1: wild - tame
+              keyEst2.Set(&wildDistance);
+              keyEst2.ModSubK1order(&tameDistance);
+#ifdef USE_SYMMETRY
+              keyEst2.ModAddK1order(&rangeWidthDiv2);
+#endif
+              keyEst2.ModAddK1order(&rangeStart);
+
+              // Pick the estimate that falls within [rangeStart, rangeEnd]
+              bool est1_in_range = !keyEst1.IsLower(&rangeStart) && !keyEst1.IsGreater(&rangeEnd);
+              bool est2_in_range = !keyEst2.IsLower(&rangeStart) && !keyEst2.IsGreater(&rangeEnd);
+
+              if(est1_in_range) {
+                localKeyEstimate.Set(&keyEst1);
+              } else if(est2_in_range) {
+                localKeyEstimate.Set(&keyEst2);
+              } else {
+                // Neither in range (shouldn't happen), use est1 as fallback
+                localKeyEstimate.Set(&keyEst1);
+              }
 
               // Update local minimum gap and remember its key estimate
               bool is_smaller = false;
