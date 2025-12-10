@@ -32,7 +32,11 @@
 
 // ---------------------------------------------------------------------------------------
 
-__global__ void comp_kangaroos(uint64_t *kangaroos,uint32_t maxFound,uint32_t *found,uint64_t dpMask) {
+// __launch_bounds__ gives compiler hints for register allocation and occupancy optimization
+// (maxThreadsPerBlock, minBlocksPerMultiprocessor)
+// Using 1 block per SM to maximize register usage for elliptic curve operations
+__global__ void __launch_bounds__(GPU_BLOCK_SIZE, 1)
+comp_kangaroos(uint64_t *kangaroos,uint32_t maxFound,uint32_t *found,uint64_t dpMask) {
 
   int xPtr = (blockIdx.x*blockDim.x*GPU_GRP_SIZE) * KSIZE; // x[4] , y[4] , d[4], lastJump
   ComputeKangaroos(kangaroos + xPtr,maxFound,found,dpMask);
