@@ -48,7 +48,7 @@
 #define MADDS(r,a,b,c) asm volatile ("madc.hi.s64 %0, %1, %2, %3;" : "=l"(r) : "l"(a), "l"(b), "l"(c));
 
 // Jump distance
-__device__ __constant__ uint64_t jD[NB_JUMP][2];
+__device__ __constant__ uint64_t jD[NB_JUMP][4];
 // jump points
 __device__ __constant__ uint64_t jPx[NB_JUMP][4];
 __device__ __constant__ uint64_t jPy[NB_JUMP][4];
@@ -122,8 +122,8 @@ __device__ __constant__ uint64_t _O[] = { 0xBFD25E8CD0364141ULL,0xBAAEDCE6AF48A0
 
 #define Add256(r,a) { \
   UADDO1((r)[0], (a)[0]); \
-  UADDO1((r)[1], (a)[1]); \
-  UADDO1((r)[2], (a)[2]); \
+  UADDC1((r)[1], (a)[1]); \
+  UADDC1((r)[2], (a)[2]); \
   UADD1((r)[3], (a)[3]);}
 
 // ---------------------------------------------------------------------------------------
