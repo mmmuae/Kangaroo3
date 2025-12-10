@@ -138,6 +138,10 @@ int _ConvertSMVer2Cores(int major,int minor) {
     index++;
   }
 
+  if(major >= 9) return 128;
+  if(major >= 8) return 128;
+  if(major >= 7) return 64;
+
   return 0;
 
 }
@@ -176,6 +180,11 @@ GPUEngine::GPUEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuId,uint32_t m
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp,gpuId);
 
+  int cores = _ConvertSMVer2Cores(deviceProp.major,deviceProp.minor);
+  if(cores == 0 && deviceProp.maxThreadsPerMultiprocessor > 0 && deviceProp.warpSize > 0) {
+    cores = deviceProp.maxThreadsPerMultiprocessor / deviceProp.warpSize;
+  }
+
   this->nbThread = nbThreadGroup * nbThreadPerGroup;
   this->maxFound = maxFound;
   this->outputSize = (maxFound*ITEM_SIZE + 4);
@@ -183,7 +192,7 @@ GPUEngine::GPUEngine(int nbThreadGroup,int nbThreadPerGroup,int gpuId,uint32_t m
   char tmp[512];
   sprintf(tmp,"GPU #%d %s (%dx%d cores) Grid(%dx%d)",
     gpuId,deviceProp.name,deviceProp.multiProcessorCount,
-    _ConvertSMVer2Cores(deviceProp.major,deviceProp.minor),
+    cores,
     nbThread / nbThreadPerGroup,
     nbThreadPerGroup);
   deviceName = std::string(tmp);
@@ -310,13 +319,16 @@ bool GPUEngine::GetGridSize(int gpuId,int *x,int *y) {
 
     if(*y <= 0) {
       int cores = _ConvertSMVer2Cores(deviceProp.major,deviceProp.minor);
-      if(cores > 0) {
-        *y = 2 * cores;
-      } else if(deviceProp.maxThreadsPerBlock > 0) {
-        *y = deviceProp.maxThreadsPerBlock;
-      } else {
-        *y = 128;
+      if(cores == 0 && deviceProp.maxThreadsPerMultiprocessor > 0 && deviceProp.warpSize > 0) {
+        cores = deviceProp.maxThreadsPerMultiprocessor / deviceProp.warpSize;
       }
+
+      int suggested = (cores > 0) ? 2 * cores : 256;
+      int maxBlock = (deviceProp.maxThreadsPerBlock > 0 ? deviceProp.maxThreadsPerBlock : 1024);
+      if(suggested > maxBlock) suggested = maxBlock;
+      if(suggested <= 0) suggested = 128;
+
+      *y = suggested;
     }
 
   }
