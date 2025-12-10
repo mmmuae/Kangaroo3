@@ -217,9 +217,6 @@ __device__ void LoadKangaroos(uint64_t * a,uint64_t px[GPU_GRP_SIZE][4],uint64_t
 
   __syncthreads();
 
-  // Optimized memory loading with better cache utilization for modern GPUs
-  // Strided access pattern is coalesced across thread block
-  #pragma unroll 4
   for(int g = 0; g<GPU_GRP_SIZE; g++) {
 
     uint64_t *x64 = (uint64_t *)px[g];
@@ -227,19 +224,16 @@ __device__ void LoadKangaroos(uint64_t * a,uint64_t px[GPU_GRP_SIZE][4],uint64_t
     uint64_t *d64 = (uint64_t *)dist[g];
     uint32_t stride = g * KSIZE * blockDim.x;
 
-    // Load x-coordinate (256 bits)
     x64[0] = (a)[IDX + 0 * blockDim.x + stride];
     x64[1] = (a)[IDX + 1 * blockDim.x + stride];
     x64[2] = (a)[IDX + 2 * blockDim.x + stride];
     x64[3] = (a)[IDX + 3 * blockDim.x + stride];
 
-    // Load y-coordinate (256 bits)
     y64[0] = (a)[IDX + 4 * blockDim.x + stride];
     y64[1] = (a)[IDX + 5 * blockDim.x + stride];
     y64[2] = (a)[IDX + 6 * blockDim.x + stride];
     y64[3] = (a)[IDX + 7 * blockDim.x + stride];
 
-    // Load distance (256 bits)
     d64[0] = (a)[IDX + 8 * blockDim.x + stride];
     d64[1] = (a)[IDX + 9 * blockDim.x + stride];
     d64[2] = (a)[IDX + 10 * blockDim.x + stride];
@@ -308,28 +302,22 @@ __device__ void StoreKangaroos(uint64_t * a,uint64_t px[GPU_GRP_SIZE][4],uint64_
 
   __syncthreads();
 
-  // Optimized memory storing with better cache utilization for modern GPUs
-  // Strided access pattern is coalesced across thread block
-  #pragma unroll 4
   for(int g = 0; g < GPU_GRP_SIZE; g++) {
     uint64_t *x64 = (uint64_t *)px[g];
     uint64_t *y64 = (uint64_t *)py[g];
     uint64_t *d64 = (uint64_t *)dist[g];
     uint32_t stride = g * KSIZE * blockDim.x;
 
-    // Store x-coordinate (256 bits)
     (a)[IDX + 0 * blockDim.x + stride] = x64[0];
     (a)[IDX + 1 * blockDim.x + stride] = x64[1];
     (a)[IDX + 2 * blockDim.x + stride] = x64[2];
     (a)[IDX + 3 * blockDim.x + stride] = x64[3];
 
-    // Store y-coordinate (256 bits)
     (a)[IDX + 4 * blockDim.x + stride] = y64[0];
     (a)[IDX + 5 * blockDim.x + stride] = y64[1];
     (a)[IDX + 6 * blockDim.x + stride] = y64[2];
     (a)[IDX + 7 * blockDim.x + stride] = y64[3];
 
-    // Store distance (256 bits)
     (a)[IDX + 8 * blockDim.x + stride] = d64[0];
     (a)[IDX + 9 * blockDim.x + stride] = d64[1];
     (a)[IDX + 10 * blockDim.x + stride] = d64[2];
