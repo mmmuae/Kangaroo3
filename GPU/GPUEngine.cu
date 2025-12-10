@@ -340,6 +340,8 @@ void GPUEngine::PrintCudaInfo() {
     NULL
   };
 
+  (void)sComputeMode; // suppress unused warning on platforms where compute mode is not reported
+
   int deviceCount = 0;
   cudaError_t error_id = cudaGetDeviceCount(&deviceCount);
 

@@ -231,23 +231,17 @@ void Kangaroo::ProcessServer() {
       // Calculate tame/wild ratio (1.000 = 50/50)
       double twRatio = (wildCount > 0) ? ((double)tameCount / (double)wildCount) : 0.0;
 
-      // Calculate compact gap values - convert to billions
-      // For 256-bit: check if upper bits are set, otherwise use lower 128 bits
-      double gap256, lowestGap256;
-      if(displayLastGap.i64[3] != 0 || displayLastGap.i64[2] != 0) {
-        // Use upper 128 bits for very large gaps (scaled down)
-        gap256 = (double)displayLastGap.i64[3] * 18446744073709551616.0 + (double)displayLastGap.i64[2];
-      } else {
-        // Use lower 128 bits for normal-sized gaps
-        gap256 = (double)displayLastGap.i64[1] * 18446744073709551616.0 + (double)displayLastGap.i64[0];
-      }
-      if(displayLowestGap.i64[3] != 0 || displayLowestGap.i64[2] != 0) {
-        lowestGap256 = (double)displayLowestGap.i64[3] * 18446744073709551616.0 + (double)displayLowestGap.i64[2];
-      } else {
-        lowestGap256 = (double)displayLowestGap.i64[1] * 18446744073709551616.0 + (double)displayLowestGap.i64[0];
-      }
-      double currentGap = gap256 / 1000000000.0;
-      double lowest = lowestGap256 / 1000000000.0;
+      // Calculate compact gap values - convert to billions using the full 256-bit value
+      auto toBillions = [](const int256_t& gap) {
+        long double v = (long double)gap.i64[3];
+        v = v * 18446744073709551616.0L + (long double)gap.i64[2];
+        v = v * 18446744073709551616.0L + (long double)gap.i64[1];
+        v = v * 18446744073709551616.0L + (long double)gap.i64[0];
+        return (double)(v / 1000000000.0L);
+      };
+
+      double currentGap = toBillions(displayLastGap);
+      double lowest = toBillions(displayLowestGap);
 
       // Second line - DP insertion metrics
       uint64_t currentDPs = hashTable.GetNbItem();
@@ -377,23 +371,16 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       // Calculate tame/wild ratio (1.000 = 50/50)
       double twRatio = (wildCount > 0) ? ((double)tameCount / (double)wildCount) : 0.0;
 
-      // Calculate compact gap values - convert to billions
-      // For 256-bit: check if upper bits are set, otherwise use lower 128 bits
-      double gap256, lowestGap256;
-      if(lastGap.i64[3] != 0 || lastGap.i64[2] != 0) {
-        // Use upper 128 bits for very large gaps (scaled down)
-        gap256 = (double)lastGap.i64[3] * 18446744073709551616.0 + (double)lastGap.i64[2];
-      } else {
-        // Use lower 128 bits for normal-sized gaps
-        gap256 = (double)lastGap.i64[1] * 18446744073709551616.0 + (double)lastGap.i64[0];
-      }
-      if(lowestGap.i64[3] != 0 || lowestGap.i64[2] != 0) {
-        lowestGap256 = (double)lowestGap.i64[3] * 18446744073709551616.0 + (double)lowestGap.i64[2];
-      } else {
-        lowestGap256 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
-      }
-      double currentGap = gap256 / 1000000000.0;
-      double lowest = lowestGap256 / 1000000000.0;
+      auto toBillions = [](const int256_t& gap) {
+        long double v = (long double)gap.i64[3];
+        v = v * 18446744073709551616.0L + (long double)gap.i64[2];
+        v = v * 18446744073709551616.0L + (long double)gap.i64[1];
+        v = v * 18446744073709551616.0L + (long double)gap.i64[0];
+        return (double)(v / 1000000000.0L);
+      };
+
+      double currentGap = toBillions(lastGap);
+      double lowest = toBillions(lowestGap);
 
       // Second line - DP insertion metrics
       uint64_t currentDPs = hashTable.GetNbItem();
@@ -477,9 +464,12 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
       if( (double)count > max ) {
         // Check if we can extend based on l.gap
         if(!maxStepExtended) {
-          // Calculate lowestGap in decimal form (divide by 1e9)
-          double lowestGap128 = (double)lowestGap.i64[1] * 18446744073709551616.0 + (double)lowestGap.i64[0];
-          double lowestGapDecimal = lowestGap128 / 1000000000.0;
+          // Calculate lowestGap in decimal form (divide by 1e9) using all 256 bits
+          long double lowestGapValue = (long double)lowestGap.i64[3];
+          lowestGapValue = lowestGapValue * 18446744073709551616.0L + (long double)lowestGap.i64[2];
+          lowestGapValue = lowestGapValue * 18446744073709551616.0L + (long double)lowestGap.i64[1];
+          lowestGapValue = lowestGapValue * 18446744073709551616.0L + (long double)lowestGap.i64[0];
+          double lowestGapDecimal = (double)(lowestGapValue / 1000000000.0L);
 
           if(lowestGapDecimal < 1000.0 && lowestGapDecimal > 0.0) {
             // Extend scan by +2
@@ -534,6 +524,13 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
   setvbuf(stdout, NULL, _IONBF, 0);
 #endif
 
+  // Reuse buffers across scans to avoid repeated allocations
+  static uint32_t scanOffset = 0;
+  static uint32_t bucketsPerScan = (HASH_SIZE >> 3) ? (HASH_SIZE >> 3) : 1; // scan 1/8th of the table per pass
+  static std::vector<int256_t> distances;
+  static std::vector<int256_t> rawDistances;
+  static std::vector<uint32_t> herdTypes;
+
   while(!endOfSearch) {
 
     // Sleep for 3 seconds between scans
@@ -562,19 +559,18 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
     minGapKeyEstimate.SetInt32(0);
     bool hasMinGapKey = false;
 
-    std::vector<int256_t> distances;
-    std::vector<int256_t> rawDistances;
-    std::vector<uint32_t> herdTypes;
-
-    // Scan through all hash buckets
-    for(uint32_t h = 0; h < HASH_SIZE && !endOfSearch; h++) {
+    // Scan only a subset of the hash buckets per pass to reduce contention
+    uint32_t startBucket = scanOffset;
+    uint32_t endBucket = startBucket + bucketsPerScan;
+    for(uint32_t h = startBucket; h < endBucket && !endOfSearch; h++) {
+      uint32_t bucket = (h & HASH_MASK);
 
       distances.clear();
       rawDistances.clear();
       herdTypes.clear();
 
       LOCK(ghMutex);
-      uint32_t nbItem = hashTable.E[h].nbItem;
+      uint32_t nbItem = hashTable.E[bucket].nbItem;
 
       if(nbItem > 1) {
         distances.reserve(nbItem);
@@ -582,7 +578,7 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
         herdTypes.reserve(nbItem);
 
         for(uint32_t i = 0; i < nbItem; i++) {
-          ENTRY* entry = hashTable.E[h].items[i];
+          ENTRY* entry = hashTable.E[bucket].items[i];
           int256_t dist = entry->d;
           uint32_t type = entry->kType;
           rawDistances.push_back(dist);
@@ -682,6 +678,8 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
         }
       }
     }
+
+    scanOffset = (scanOffset + bucketsPerScan) & HASH_MASK;
 
     // Update global minimum gap, lowest gap, and last seen gap
     if(gapFound) {
