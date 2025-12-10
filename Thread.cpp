@@ -613,10 +613,22 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
               HashTable::CalcDist(&rawDistances[tameIdx], &tameDistance);
               HashTable::CalcDist(&rawDistances[wildIdx], &wildDistance);
 
+              // Calculate gap using modular arithmetic to handle wraparound correctly
+              // The gap is the minimum distance between two points on the modular circle
               Int gapInt;
               gapInt.Set(&tameDistance);
-              gapInt.Sub(&wildDistance);
-              gapInt.Abs();
+              gapInt.ModSubK1order(&wildDistance);  // Compute (tame - wild) mod order
+
+              // Check if the opposite direction is shorter
+              // If gap > order/2, use (order - gap) instead
+              Int gapNeg;
+              gapNeg.Set(&gapInt);
+              gapNeg.ModNegK1order();  // gapNeg = order - gap (modular negation)
+
+              // Use the smaller of the two distances
+              if(gapNeg.IsLower(&gapInt)) {
+                gapInt.Set(&gapNeg);
+              }
 
               int256_t gap;
               gap.i64[0] = gapInt.bits64[0];
