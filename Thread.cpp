@@ -532,6 +532,13 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
   setvbuf(stdout, NULL, _IONBF, 0);
 #endif
 
+  // Reuse buffers across scans to avoid repeated allocations
+  static uint32_t scanOffset = 0;
+  static uint32_t bucketsPerScan = (HASH_SIZE >> 3) ? (HASH_SIZE >> 3) : 1; // scan 1/8th of the table per pass
+  static std::vector<int256_t> distances;
+  static std::vector<int256_t> rawDistances;
+  static std::vector<uint32_t> herdTypes;
+
   while(!endOfSearch) {
 
     // Sleep for 3 seconds between scans
