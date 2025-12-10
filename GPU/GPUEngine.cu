@@ -579,8 +579,8 @@ void GPUEngine::SetParams(uint64_t dpMask,Int *distance,Int *px,Int *py) {
   this->dpMask = dpMask;
 
   for(int i=0;i< NB_JUMP;i++)
-    memcpy(jumpPinned + 2*i,distance[i].bits64,16);
-  cudaMemcpyToSymbol(jD,jumpPinned,jumpSize/2);
+    memcpy(jumpPinned + 4*i,distance[i].bits64,32);
+  cudaMemcpyToSymbol(jD,jumpPinned,jumpSize);
   cudaError_t err = cudaGetLastError();
   if(err != cudaSuccess) {
     printf("GPUEngine: SetParams: Failed to copy to constant memory: %s\n",cudaGetErrorString(err));
