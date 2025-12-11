@@ -639,38 +639,36 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
               gapFound = true;
               localLastGap = gap;
 
-              // Compute key estimate using the distances of the tame and wild DPs
-              // Use the same formula as CheckKey to estimate the actual private key
-              // Try both (tame - wild) and (wild - tame) since we don't know which is ahead
-              Int keyEst1, keyEst2;
+              // Compute key estimate using the same approach as CheckKey()
+              // Try all four sign combinations (type 0-3) when adding the two distances
+              bool hasKeyCandidate = false;
+              for(uint8_t type = 0; type < 4; type++) {
 
-              // Try type=2: tame - wild
-              keyEst1.Set(&tameDistance);
-              keyEst1.ModSubK1order(&wildDistance);
+                Int tdAdj(&tameDistance);
+                Int wdAdj(&wildDistance);
+
+                if(type & 0x1)
+                  tdAdj.ModNegK1order();
+                if(type & 0x2)
+                  wdAdj.ModNegK1order();
+
+                Int keyEst(&tdAdj);
+                keyEst.ModAddK1order(&wdAdj);
 #ifdef USE_SYMMETRY
-              keyEst1.ModAddK1order(&rangeWidthDiv2);
+                keyEst.ModAddK1order(&rangeWidthDiv2);
 #endif
-              keyEst1.ModAddK1order(&rangeStart);
+                keyEst.ModAddK1order(&rangeStart);
 
-              // Try type=1: wild - tame
-              keyEst2.Set(&wildDistance);
-              keyEst2.ModSubK1order(&tameDistance);
-#ifdef USE_SYMMETRY
-              keyEst2.ModAddK1order(&rangeWidthDiv2);
-#endif
-              keyEst2.ModAddK1order(&rangeStart);
+                bool in_range = !keyEst.IsLower(&rangeStart) && !keyEst.IsGreater(&rangeEnd);
 
-              // Pick the estimate that falls within [rangeStart, rangeEnd]
-              bool est1_in_range = !keyEst1.IsLower(&rangeStart) && !keyEst1.IsGreater(&rangeEnd);
-              bool est2_in_range = !keyEst2.IsLower(&rangeStart) && !keyEst2.IsGreater(&rangeEnd);
+                if(in_range || !hasKeyCandidate) {
+                  localKeyEstimate.Set(&keyEst);
+                  hasKeyCandidate = true;
+                }
 
-              if(est1_in_range) {
-                localKeyEstimate.Set(&keyEst1);
-              } else if(est2_in_range) {
-                localKeyEstimate.Set(&keyEst2);
-              } else {
-                // Neither in range (shouldn't happen), use est1 as fallback
-                localKeyEstimate.Set(&keyEst1);
+                if(in_range) {
+                  break;
+                }
               }
 
               // Update local minimum gap and remember its key estimate
@@ -691,8 +689,10 @@ void Kangaroo::ScanGapsThread(TH_PARAM *p) {
                 localMinGap.i64[2] = gap.i64[2];
                 localMinGap.i64[3] = gap.i64[3];
 
-                minGapKeyEstimate.Set(&localKeyEstimate);
-                hasMinGapKey = true;
+                if(hasKeyCandidate) {
+                  minGapKeyEstimate.Set(&localKeyEstimate);
+                  hasMinGapKey = true;
+                }
               }
             }
           }
