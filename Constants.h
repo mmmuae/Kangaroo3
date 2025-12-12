@@ -24,9 +24,10 @@
 // Use symmetry
 //#define USE_SYMMETRY
 
-// Number of random jumps
-// Max 512 for the GPU
-#define NB_JUMP 32
+// Number of random jumps (compile-time constant)
+// Recommended: 64-128 for RTX 5090 (better random walk distribution)
+// Max 512 for the GPU (must be power of 2)
+#define NB_JUMP 64
 
 // GPU group size
 #define GPU_GRP_SIZE 96
