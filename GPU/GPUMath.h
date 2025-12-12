@@ -1358,75 +1358,29 @@ __device__ void _ModSqr(uint64_t *rp,const uint64_t *up) {
 
 __device__ __noinline__ void _ModInvGrouped(uint64_t r[GPU_GRP_SIZE][4]) {
 
-  // Two-level batch inversion for better cache locality
-  // Split GPU_GRP_SIZE into groups for reduced memory footprint
-  #define GROUP_SIZE 8
-  #define NUM_GROUPS (GPU_GRP_SIZE / GROUP_SIZE)
-
-  uint64_t groupProd[NUM_GROUPS][4];
-  uint64_t groupPrefix[NUM_GROUPS][4];
+  // Compute the prefix products once so we can reuse them when walking backward.
+  uint64_t prefix[GPU_GRP_SIZE][4];
   uint64_t inverse[5];
 
-  // Level 1: Compute product for each group
-  for (uint32_t g = 0; g < NUM_GROUPS; g++) {
-    uint32_t base = g * GROUP_SIZE;
-    Load256(groupProd[g], r[base]);
-    for (uint32_t i = 1; i < GROUP_SIZE; i++) {
-      _ModMult(groupProd[g], groupProd[g], r[base + i]);
-    }
+  Load256(prefix[0], r[0]);
+  for (uint32_t i = 1; i < GPU_GRP_SIZE; i++) {
+    _ModMult(prefix[i], prefix[i - 1], r[i]);
   }
 
-  // Level 2: Compute prefix products of group products
-  Load256(groupPrefix[0], groupProd[0]);
-  for (uint32_t g = 1; g < NUM_GROUPS; g++) {
-    _ModMult(groupPrefix[g], groupPrefix[g - 1], groupProd[g]);
-  }
-
-  // Compute inverse of the final product
-  Load256(inverse, groupPrefix[NUM_GROUPS - 1]);
+  // We need 320bit signed int for ModInv
+  Load256(inverse, prefix[GPU_GRP_SIZE - 1]);
   inverse[4] = 0;
   _ModInv(inverse);
 
-  // Walk backward through groups
-  for (int g = NUM_GROUPS - 1; g >= 0; g--) {
-    uint32_t base = g * GROUP_SIZE;
-
-    // Get the prefix up to this group
-    uint64_t groupInv[4];
-    if (g == 0) {
-      Load256(groupInv, inverse);
-    } else {
-      _ModMult(groupInv, groupPrefix[g - 1], inverse);
-    }
-
-    // Update inverse for next group
-    if (g > 0) {
-      _ModMult(inverse, inverse, groupProd[g]);
-    }
-
-    // Compute local prefix products within the group
-    uint64_t localPrefix[GROUP_SIZE][4];
-    Load256(localPrefix[0], r[base]);
-    for (uint32_t i = 1; i < GROUP_SIZE; i++) {
-      _ModMult(localPrefix[i], localPrefix[i - 1], r[base + i]);
-    }
-
-    // Compute inverses for elements in this group
-    uint64_t localInv[5];
-    Load256(localInv, localPrefix[GROUP_SIZE - 1]);
-    localInv[4] = 0;
-    _ModMult(localInv, groupInv);
-
-    for (int i = GROUP_SIZE - 1; i > 0; i--) {
-      uint64_t current[4];
-      Load256(current, r[base + i]);
-      _ModMult(r[base + i], localPrefix[i - 1], localInv);
-      _ModMult(localInv, localInv, current);
-    }
-    Load256(r[base], localInv);
+  // Walk backward while recycling the inverse accumulator instead of allocating
+  // a second full-size buffer.
+  for (uint32_t i = GPU_GRP_SIZE - 1; i > 0; i--) {
+    uint64_t current[4];
+    Load256(current, r[i]);
+    _ModMult(r[i], prefix[i - 1], inverse);
+    _ModMult(inverse, inverse, current);
   }
 
-  #undef GROUP_SIZE
-  #undef NUM_GROUPS
+  Load256(r[0], inverse);
 
 }
