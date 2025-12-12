@@ -205,8 +205,6 @@ __device__ void LoadKangaroos(uint64_t *a,uint64_t px[GPU_GRP_SIZE][4],uint64_t 
 __device__ void LoadKangaroos(uint64_t * a,uint64_t px[GPU_GRP_SIZE][4],uint64_t py[GPU_GRP_SIZE][4],uint64_t dist[GPU_GRP_SIZE][4]) {
 #endif
 
-  __syncthreads();
-
   for(int g = 0; g<GPU_GRP_SIZE; g++) {
 
     uint64_t *x64 = (uint64_t *)px[g];
@@ -237,8 +235,6 @@ __device__ void LoadKangaroos(uint64_t * a,uint64_t px[GPU_GRP_SIZE][4],uint64_t
 }
 
 __device__ void LoadDists(uint64_t* a,uint64_t dist[GPU_GRP_SIZE][4]) {
-
-  __syncthreads();
 
   for(int g = 0; g < GPU_GRP_SIZE; g++) {
 
@@ -289,8 +285,6 @@ __device__ void StoreKangaroos(uint64_t *a,uint64_t px[GPU_GRP_SIZE][4],uint64_t
 #else
 __device__ void StoreKangaroos(uint64_t * a,uint64_t px[GPU_GRP_SIZE][4],uint64_t py[GPU_GRP_SIZE][4],uint64_t dist[GPU_GRP_SIZE][4]) {
 #endif
-
-  __syncthreads();
 
   for(int g = 0; g < GPU_GRP_SIZE; g++) {
     uint64_t *x64 = (uint64_t *)px[g];
@@ -1183,26 +1177,29 @@ __device__ void _ModSqr(uint64_t *rp,const uint64_t *up) {
 
 __device__ __noinline__ void _ModInvGrouped(uint64_t r[GPU_GRP_SIZE][4]) {
 
-  uint64_t subp[GPU_GRP_SIZE][4];
-  uint64_t newValue[4];
+  // Compute the prefix products once so we can reuse them when walking backward.
+  uint64_t prefix[GPU_GRP_SIZE][4];
   uint64_t inverse[5];
 
-  Load256(subp[0],r[0]);
-  for(uint32_t i = 1; i < GPU_GRP_SIZE; i++) {
-    _ModMult(subp[i],subp[i - 1],r[i]);
+  Load256(prefix[0], r[0]);
+  for (uint32_t i = 1; i < GPU_GRP_SIZE; i++) {
+    _ModMult(prefix[i], prefix[i - 1], r[i]);
   }
 
   // We need 320bit signed int for ModInv
-  Load256(inverse,subp[GPU_GRP_SIZE - 1]);
+  Load256(inverse, prefix[GPU_GRP_SIZE - 1]);
   inverse[4] = 0;
   _ModInv(inverse);
 
-  for(uint32_t i = GPU_GRP_SIZE - 1; i > 0; i--) {
-    _ModMult(newValue,subp[i - 1],inverse);
-    _ModMult(inverse,r[i]);
-    Load256(r[i],newValue);
+  // Walk backward while recycling the inverse accumulator instead of allocating
+  // a second full-size buffer.
+  for (uint32_t i = GPU_GRP_SIZE - 1; i > 0; i--) {
+    uint64_t current[4];
+    Load256(current, r[i]);
+    _ModMult(r[i], prefix[i - 1], inverse);
+    _ModMult(inverse, inverse, current);
   }
 
-  Load256(r[0],inverse);
+  Load256(r[0], inverse);
 
 }
