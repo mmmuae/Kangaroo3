@@ -28,6 +28,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <vector>
 #ifdef _WIN32
 #include <windows.h>
@@ -74,6 +75,7 @@ void printUsage() {
   printf(" -o fileName: output result to fileName\n");
   printf(" -l: List cuda enabled devices\n");
   printf(" -check: Check GPU kernel vs CPU\n");
+  printf(" -seed <seed>: Seed random generation for deterministic runs\n");
   printf(" inFile: intput configuration file\n");
   exit(0);
 
@@ -116,6 +118,33 @@ double getDouble(string name,char *v) {
   }
 
   return r;
+
+}
+
+uint32_t getUint32(string name,char *v) {
+
+  unsigned long r;
+
+  try {
+
+    r = std::stoul(string(v));
+    if(r > std::numeric_limits<uint32_t>::max()) {
+      throw std::out_of_range("out of range");
+    }
+
+  } catch(std::invalid_argument&) {
+
+    printf("Invalid %s argument, number expected\n",name.c_str());
+    exit(-1);
+
+  } catch(std::out_of_range&) {
+
+    printf("Invalid %s argument, must fit in uint32_t\n",name.c_str());
+    exit(-1);
+
+  }
+
+  return static_cast<uint32_t>(r);
 
 }
 
@@ -176,6 +205,8 @@ static bool serverMode = false;
 static string serverIP = "";
 static string outputFile = "";
 static bool splitWorkFile = false;
+static uint32_t randomSeed = 0;
+static bool seedProvided = false;
 
 static bool isHexString(const string &value) {
   if(value.empty()) {
@@ -302,7 +333,7 @@ int main(int argc, char* argv[]) {
 
   // Global Init
   Timer::Init();
-  rseed(Timer::getSeed32());
+  randomSeed = Timer::getSeed32();
 
   // Init SecpK1
   Secp256K1 *secp = new Secp256K1();
@@ -427,6 +458,11 @@ int main(int argc, char* argv[]) {
       CHECKARG("-g",1);
       getInts("gridSize",gridSize,string(argv[a]),',');
       a++;
+    } else if(strcmp(argv[a],"-seed") == 0) {
+      CHECKARG("-seed",1);
+      randomSeed = getUint32("seed",argv[a]);
+      seedProvided = true;
+      a++;
     } else if(strcmp(argv[a],"-v") == 0) {
       ::exit(0);
     } else if(strcmp(argv[a],"-check") == 0) {
@@ -465,6 +501,8 @@ int main(int argc, char* argv[]) {
   bool hasDecRange = (!startDecArg.empty() || !endDecArg.empty());
   bool hasHexRange = (!startHexArg.empty() || !endHexArg.empty());
   bool hasRangeFlags = hasDecRange || hasHexRange;
+
+  rseed(randomSeed);
 
   if(hasDecRange && hasHexRange) {
     printf("Specify either decimal or hex range flags, not both\n");
@@ -549,7 +587,7 @@ int main(int argc, char* argv[]) {
   }
 
   Kangaroo *v = new Kangaroo(secp,dp,gpuEnable,workFile,iWorkFile,savePeriod,saveKangaroo,saveKangarooByServer,
-                             maxStep,wtimeout,port,ntimeout,serverIP,outputFile,splitWorkFile);
+                             maxStep,wtimeout,port,ntimeout,serverIP,outputFile,splitWorkFile,randomSeed,seedProvided);
   ScopedTempFile tempFile;
 
   if(checkFlag) {
