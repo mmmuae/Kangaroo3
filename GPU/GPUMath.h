@@ -491,11 +491,13 @@ __device__ void ModNeg256(uint64_t *r) {
 __device__ void ModSub256(uint64_t *r,uint64_t *a,uint64_t *b) {
   // Optimized PTX version with better instruction scheduling
   uint64_t borrow;
-  asm("sub.cc.u64 %0, %4, %8;\n\t"
-      "subc.cc.u64 %1, %5, %9;\n\t"
-      "subc.cc.u64 %2, %6, %10;\n\t"
-      "subc.cc.u64 %3, %7, %11;\n\t"
-      "subc.u64 %12, 0, 0;\n\t"
+  // Outputs: %0=%r[0], %1=%r[1], %2=%r[2], %3=%r[3], %4=borrow
+  // Inputs:  %5=%a[0], %6=%a[1], %7=%a[2], %8=%a[3], %9=%b[0], %10=%b[1], %11=%b[2], %12=%b[3]
+  asm("sub.cc.u64 %0, %5, %9;\n\t"
+      "subc.cc.u64 %1, %6, %10;\n\t"
+      "subc.cc.u64 %2, %7, %11;\n\t"
+      "subc.cc.u64 %3, %8, %12;\n\t"
+      "subc.u64 %4, 0, 0;\n\t"
       : "=l"(r[0]), "=l"(r[1]), "=l"(r[2]), "=l"(r[3]), "=l"(borrow)
       : "l"(a[0]), "l"(a[1]), "l"(a[2]), "l"(a[3]),
         "l"(b[0]), "l"(b[1]), "l"(b[2]), "l"(b[3]));
@@ -516,11 +518,13 @@ __device__ void ModSub256(uint64_t *r,uint64_t *a,uint64_t *b) {
 __device__ void ModSub256(uint64_t* r,uint64_t* b) {
   // Optimized PTX version with better instruction scheduling
   uint64_t borrow;
-  asm("sub.cc.u64 %0, %0, %4;\n\t"
-      "subc.cc.u64 %1, %1, %5;\n\t"
-      "subc.cc.u64 %2, %2, %6;\n\t"
-      "subc.cc.u64 %3, %3, %7;\n\t"
-      "subc.u64 %8, 0, 0;\n\t"
+  // Outputs: %0=%r[0], %1=%r[1], %2=%r[2], %3=%r[3], %4=borrow
+  // Inputs:  %5=%b[0], %6=%b[1], %7=%b[2], %8=%b[3]
+  asm("sub.cc.u64 %0, %0, %5;\n\t"
+      "subc.cc.u64 %1, %1, %6;\n\t"
+      "subc.cc.u64 %2, %2, %7;\n\t"
+      "subc.cc.u64 %3, %3, %8;\n\t"
+      "subc.u64 %4, 0, 0;\n\t"
       : "+l"(r[0]), "+l"(r[1]), "+l"(r[2]), "+l"(r[3]), "=l"(borrow)
       : "l"(b[0]), "l"(b[1]), "l"(b[2]), "l"(b[3]));
 
