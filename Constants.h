@@ -29,10 +29,10 @@
 #define NB_JUMP 32
 
 // GPU group size
-#define GPU_GRP_SIZE 64
+#define GPU_GRP_SIZE 96
 
 // GPU number of run per kernel call
-#define NB_RUN 32
+#define NB_RUN 48
 
 // Kangaroo type
 #define TAME 0  // Tame kangaroo

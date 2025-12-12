@@ -120,11 +120,14 @@ __device__ __constant__ uint64_t _O[] = { 0xBFD25E8CD0364141ULL,0xBAAEDCE6AF48A0
   UADDO1((r)[0], (a)[0]); \
   UADD1((r)[1], (a)[1]);}
 
-#define Add256(r,a) { \
-  UADDO1((r)[0], (a)[0]); \
-  UADDC1((r)[1], (a)[1]); \
-  UADDC1((r)[2], (a)[2]); \
-  UADD1((r)[3], (a)[3]);}
+// Optimized PTX assembly for better instruction scheduling
+#define Add256(r,a) \
+  asm("add.cc.u64 %0, %0, %4;\n\t" \
+      "addc.cc.u64 %1, %1, %5;\n\t" \
+      "addc.cc.u64 %2, %2, %6;\n\t" \
+      "addc.u64 %3, %3, %7;\n\t" \
+      : "+l"((r)[0]), "+l"((r)[1]), "+l"((r)[2]), "+l"((r)[3]) \
+      : "l"((a)[0]), "l"((a)[1]), "l"((a)[2]), "l"((a)[3]));
 
 // ---------------------------------------------------------------------------------------
 
@@ -486,45 +489,50 @@ __device__ void ModNeg256(uint64_t *r) {
 // ---------------------------------------------------------------------------------------
 
 __device__ void ModSub256(uint64_t *r,uint64_t *a,uint64_t *b) {
+  // Optimized PTX version with better instruction scheduling
+  uint64_t borrow;
+  asm("sub.cc.u64 %0, %4, %8;\n\t"
+      "subc.cc.u64 %1, %5, %9;\n\t"
+      "subc.cc.u64 %2, %6, %10;\n\t"
+      "subc.cc.u64 %3, %7, %11;\n\t"
+      "subc.u64 %12, 0, 0;\n\t"
+      : "=l"(r[0]), "=l"(r[1]), "=l"(r[2]), "=l"(r[3]), "=l"(borrow)
+      : "l"(a[0]), "l"(a[1]), "l"(a[2]), "l"(a[3]),
+        "l"(b[0]), "l"(b[1]), "l"(b[2]), "l"(b[3]));
 
-  uint64_t t;
-  uint64_t T[4];
-  USUBO(r[0],a[0],b[0]);
-  USUBC(r[1],a[1],b[1]);
-  USUBC(r[2],a[2],b[2]);
-  USUBC(r[3],a[3],b[3]);
-  USUB(t,0ULL,0ULL);
-  T[0] = 0xFFFFFFFEFFFFFC2FULL & t;
-  T[1] = 0xFFFFFFFFFFFFFFFFULL & t;
-  T[2] = 0xFFFFFFFFFFFFFFFFULL & t;
-  T[3] = 0xFFFFFFFFFFFFFFFFULL & t;
-  UADDO1(r[0],T[0]);
-  UADDC1(r[1],T[1]);
-  UADDC1(r[2],T[2]);
-  UADD1(r[3],T[3]);
-
+  // Add P if there was a borrow (conditional add)
+  uint64_t P0 = 0xFFFFFFFEFFFFFC2FULL & borrow;
+  uint64_t P1 = 0xFFFFFFFFFFFFFFFFULL & borrow;
+  asm("add.cc.u64 %0, %0, %4;\n\t"
+      "addc.cc.u64 %1, %1, %5;\n\t"
+      "addc.cc.u64 %2, %2, %5;\n\t"
+      "addc.u64 %3, %3, %5;\n\t"
+      : "+l"(r[0]), "+l"(r[1]), "+l"(r[2]), "+l"(r[3])
+      : "l"(P0), "l"(P1));
 }
 
 // ---------------------------------------------------------------------------------------
 
 __device__ void ModSub256(uint64_t* r,uint64_t* b) {
+  // Optimized PTX version with better instruction scheduling
+  uint64_t borrow;
+  asm("sub.cc.u64 %0, %0, %4;\n\t"
+      "subc.cc.u64 %1, %1, %5;\n\t"
+      "subc.cc.u64 %2, %2, %6;\n\t"
+      "subc.cc.u64 %3, %3, %7;\n\t"
+      "subc.u64 %8, 0, 0;\n\t"
+      : "+l"(r[0]), "+l"(r[1]), "+l"(r[2]), "+l"(r[3]), "=l"(borrow)
+      : "l"(b[0]), "l"(b[1]), "l"(b[2]), "l"(b[3]));
 
-  uint64_t t;
-  uint64_t T[4];
-  USUBO(r[0],r[0],b[0]);
-  USUBC(r[1],r[1],b[1]);
-  USUBC(r[2],r[2],b[2]);
-  USUBC(r[3],r[3],b[3]);
-  USUB(t,0ULL,0ULL);
-  T[0] = 0xFFFFFFFEFFFFFC2FULL & t;
-  T[1] = 0xFFFFFFFFFFFFFFFFULL & t;
-  T[2] = 0xFFFFFFFFFFFFFFFFULL & t;
-  T[3] = 0xFFFFFFFFFFFFFFFFULL & t;
-  UADDO1(r[0],T[0]);
-  UADDC1(r[1],T[1]);
-  UADDC1(r[2],T[2]);
-  UADD1(r[3],T[3]);
-
+  // Add P if there was a borrow (conditional add)
+  uint64_t P0 = 0xFFFFFFFEFFFFFC2FULL & borrow;
+  uint64_t P1 = 0xFFFFFFFFFFFFFFFFULL & borrow;
+  asm("add.cc.u64 %0, %0, %4;\n\t"
+      "addc.cc.u64 %1, %1, %5;\n\t"
+      "addc.cc.u64 %2, %2, %5;\n\t"
+      "addc.u64 %3, %3, %5;\n\t"
+      : "+l"(r[0]), "+l"(r[1]), "+l"(r[2]), "+l"(r[3])
+      : "l"(P0), "l"(P1));
 }
 
 #ifdef USE_SYMMETRY
@@ -815,11 +823,58 @@ __device__ __noinline__ void _ModInv(uint64_t *R) {
 }
 
 // ---------------------------------------------------------------------------------------
-// Compute a*b*(mod n)
+// Fast 192-bit multiplication (when upper word is zero)
+// ---------------------------------------------------------------------------------------
+__device__ void _ModMult192(uint64_t *r,uint64_t *a,uint64_t *b) {
+  uint64_t r384[6];
+  uint64_t t[NBBLOCK];
+
+  r384[3] = 0;
+  r384[4] = 0;
+  r384[5] = 0;
+
+  // 192*192 multiplier (skip b[3] and a[3] as they're zero)
+  UMult(r384,a,b[0]);
+  UMult(t,a,b[1]);
+  UADDO1(r384[1],t[0]);
+  UADDC1(r384[2],t[1]);
+  UADDC1(r384[3],t[2]);
+  UADD1(r384[4],t[3]);
+  UMult(t,a,b[2]);
+  UADDO1(r384[2],t[0]);
+  UADDC1(r384[3],t[1]);
+  UADDC1(r384[4],t[2]);
+  UADD1(r384[5],t[3]);
+
+  // Reduce from 384 to 320
+  UMult(t,(r384 + 3),0x1000003D1ULL);
+  UADDO1(r384[0],t[0]);
+  UADDC1(r384[1],t[1]);
+  UADDC1(r384[2],t[2]);
+
+  uint64_t ah,al;
+  // Reduce from 320 to 256
+  UADD1(t[3],0ULL);
+  UMULLO(al,t[3],0x1000003D1ULL);
+  UMULHI(ah,t[3],0x1000003D1ULL);
+  UADDO(r[0],r384[0],al);
+  UADDC(r[1],r384[1],ah);
+  UADDC(r[2],r384[2],0ULL);
+  UADD(r[3],0ULL,0ULL);
+}
+
+// ---------------------------------------------------------------------------------------
+// Compute a*b*(mod n) with hybrid 192/256-bit optimization
 // a and b must be lower than n
 // ---------------------------------------------------------------------------------------
 
 __device__ void _ModMult(uint64_t *r,uint64_t *a,uint64_t *b) {
+
+  // Fast path for 192-bit values (most common case)
+  if(__builtin_expect((a[3] | b[3]) == 0, 1)) {
+    _ModMult192(r, a, b);
+    return;
+  }
 
   uint64_t r512[8];
   uint64_t t[NBBLOCK];
@@ -849,7 +904,7 @@ __device__ void _ModMult(uint64_t *r,uint64_t *a,uint64_t *b) {
   UADDC1(r512[6],t[3]);
   UADD1(r512[7],t[4]);
 
-  // Reduce from 512 to 320 
+  // Reduce from 512 to 320
   UMult(t,(r512 + 4),0x1000003D1ULL);
   UADDO1(r512[0],t[0]);
   UADDC1(r512[1],t[1]);
@@ -858,7 +913,7 @@ __device__ void _ModMult(uint64_t *r,uint64_t *a,uint64_t *b) {
 
   uint64_t ah,al;
 
-  // Reduce from 320 to 256 
+  // Reduce from 320 to 256
   UADD1(t[4],0ULL);
   UMULLO(al,t[4],0x1000003D1ULL);
   UMULHI(ah,t[4],0x1000003D1ULL);
@@ -871,6 +926,46 @@ __device__ void _ModMult(uint64_t *r,uint64_t *a,uint64_t *b) {
 
 
 __device__ void _ModMult(uint64_t *r,uint64_t *a) {
+
+  // Fast path for 192-bit values
+  if(__builtin_expect((a[3] | r[3]) == 0, 1)) {
+    uint64_t r384[6];
+    uint64_t t[NBBLOCK];
+
+    r384[3] = 0;
+    r384[4] = 0;
+    r384[5] = 0;
+
+    // 192*192 multiplier
+    UMult(r384,a,r[0]);
+    UMult(t,a,r[1]);
+    UADDO1(r384[1],t[0]);
+    UADDC1(r384[2],t[1]);
+    UADDC1(r384[3],t[2]);
+    UADD1(r384[4],t[3]);
+    UMult(t,a,r[2]);
+    UADDO1(r384[2],t[0]);
+    UADDC1(r384[3],t[1]);
+    UADDC1(r384[4],t[2]);
+    UADD1(r384[5],t[3]);
+
+    // Reduce from 384 to 320
+    UMult(t,(r384 + 3),0x1000003D1ULL);
+    UADDO1(r384[0],t[0]);
+    UADDC1(r384[1],t[1]);
+    UADDC1(r384[2],t[2]);
+
+    uint64_t ah,al;
+    // Reduce from 320 to 256
+    UADD1(t[3],0ULL);
+    UMULLO(al,t[3],0x1000003D1ULL);
+    UMULHI(ah,t[3],0x1000003D1ULL);
+    UADDO(r[0],r384[0],al);
+    UADDC(r[1],r384[1],ah);
+    UADDC(r[2],r384[2],0ULL);
+    UADD(r[3],0ULL,0ULL);
+    return;
+  }
 
   uint64_t r512[8];
   uint64_t t[NBBLOCK];
@@ -900,7 +995,7 @@ __device__ void _ModMult(uint64_t *r,uint64_t *a) {
   UADDC1(r512[6],t[3]);
   UADD1(r512[7],t[4]);
 
-  // Reduce from 512 to 320 
+  // Reduce from 512 to 320
   UMult(t,(r512 + 4),0x1000003D1ULL);
   UADDO1(r512[0],t[0]);
   UADDC1(r512[1],t[1]);
@@ -918,7 +1013,89 @@ __device__ void _ModMult(uint64_t *r,uint64_t *a) {
 
 }
 
+// ---------------------------------------------------------------------------------------
+// Fast 192-bit squaring (when upper word is zero)
+// ---------------------------------------------------------------------------------------
+__device__ void _ModSqr192(uint64_t *rp,const uint64_t *up) {
+  uint64_t r384[6];
+  uint64_t SL,SH;
+
+  {
+  // Line 0 (4 limbs for 192-bit)
+  uint64_t r01L,r01H;
+  uint64_t r02L,r02H;
+
+  UMULLO(SL,up[0],up[0]);
+  UMULHI(SH,up[0],up[0]);
+  UMULLO(r01L,up[0],up[1]);
+  UMULHI(r01H,up[0],up[1]);
+  UMULLO(r02L,up[0],up[2]);
+  UMULHI(r02H,up[0],up[2]);
+
+  r384[0] = SL;
+  r384[1] = r01L;
+  r384[2] = r02L;
+
+  UADDO1(r384[1],SH);
+  UADDC1(r384[2],r01H);
+  UADD(r384[3],r02H,0ULL);
+
+  // Line 1 (5 limbs for 192-bit)
+  uint64_t r12L,r12H;
+
+  UMULLO(SL,up[1],up[1]);
+  UMULHI(SH,up[1],up[1]);
+  UMULLO(r12L,up[1],up[2]);
+  UMULHI(r12H,up[1],up[2]);
+
+  UADDO1(r384[1],r01L);
+  UADDC1(r384[2],SL);
+  UADDC1(r384[3],r12L);
+  UADD(r384[4],r12H,0ULL);
+
+  UADDO1(r384[2],r01H);
+  UADDC1(r384[3],SH);
+  UADD1(r384[4],0ULL);
+
+  // Line 2 (6 limbs for 192-bit)
+  UMULLO(SL,up[2],up[2]);
+  UMULHI(SH,up[2],up[2]);
+
+  UADDO1(r384[2],r02L);
+  UADDC1(r384[3],r12L);
+  UADDC1(r384[4],SL);
+  UADD(r384[5],SH,0ULL);
+
+  UADDO1(r384[3],r02H);
+  UADDC1(r384[4],r12H);
+  UADD1(r384[5],0ULL);
+  }
+
+  uint64_t t[NBBLOCK];
+
+  // Reduce from 384 to 320
+  UMult(t,(r384 + 3),0x1000003D1ULL);
+  UADDO1(r384[0],t[0]);
+  UADDC1(r384[1],t[1]);
+  UADDC1(r384[2],t[2]);
+
+  // Reduce from 320 to 256
+  UADD1(t[3],0ULL);
+  UMULLO(SL,t[3],0x1000003D1ULL);
+  UMULHI(SH,t[3],0x1000003D1ULL);
+  UADDO(rp[0],r384[0],SL);
+  UADDC(rp[1],r384[1],SH);
+  UADDC(rp[2],r384[2],0ULL);
+  UADD(rp[3],0ULL,0ULL);
+}
+
 __device__ void _ModSqr(uint64_t *rp,const uint64_t *up) {
+
+  // Fast path for 192-bit values (most common case)
+  if(__builtin_expect(up[3] == 0, 1)) {
+    _ModSqr192(rp, up);
+    return;
+  }
 
   uint64_t r512[8];
 
@@ -1177,29 +1354,75 @@ __device__ void _ModSqr(uint64_t *rp,const uint64_t *up) {
 
 __device__ __noinline__ void _ModInvGrouped(uint64_t r[GPU_GRP_SIZE][4]) {
 
-  // Compute the prefix products once so we can reuse them when walking backward.
-  uint64_t prefix[GPU_GRP_SIZE][4];
+  // Two-level batch inversion for better cache locality
+  // Split GPU_GRP_SIZE into groups for reduced memory footprint
+  #define GROUP_SIZE 8
+  #define NUM_GROUPS (GPU_GRP_SIZE / GROUP_SIZE)
+
+  uint64_t groupProd[NUM_GROUPS][4];
+  uint64_t groupPrefix[NUM_GROUPS][4];
   uint64_t inverse[5];
 
-  Load256(prefix[0], r[0]);
-  for (uint32_t i = 1; i < GPU_GRP_SIZE; i++) {
-    _ModMult(prefix[i], prefix[i - 1], r[i]);
+  // Level 1: Compute product for each group
+  for (uint32_t g = 0; g < NUM_GROUPS; g++) {
+    uint32_t base = g * GROUP_SIZE;
+    Load256(groupProd[g], r[base]);
+    for (uint32_t i = 1; i < GROUP_SIZE; i++) {
+      _ModMult(groupProd[g], groupProd[g], r[base + i]);
+    }
   }
 
-  // We need 320bit signed int for ModInv
-  Load256(inverse, prefix[GPU_GRP_SIZE - 1]);
+  // Level 2: Compute prefix products of group products
+  Load256(groupPrefix[0], groupProd[0]);
+  for (uint32_t g = 1; g < NUM_GROUPS; g++) {
+    _ModMult(groupPrefix[g], groupPrefix[g - 1], groupProd[g]);
+  }
+
+  // Compute inverse of the final product
+  Load256(inverse, groupPrefix[NUM_GROUPS - 1]);
   inverse[4] = 0;
   _ModInv(inverse);
 
-  // Walk backward while recycling the inverse accumulator instead of allocating
-  // a second full-size buffer.
-  for (uint32_t i = GPU_GRP_SIZE - 1; i > 0; i--) {
-    uint64_t current[4];
-    Load256(current, r[i]);
-    _ModMult(r[i], prefix[i - 1], inverse);
-    _ModMult(inverse, inverse, current);
+  // Walk backward through groups
+  for (int g = NUM_GROUPS - 1; g >= 0; g--) {
+    uint32_t base = g * GROUP_SIZE;
+
+    // Get the prefix up to this group
+    uint64_t groupInv[4];
+    if (g == 0) {
+      Load256(groupInv, inverse);
+    } else {
+      _ModMult(groupInv, groupPrefix[g - 1], inverse);
+    }
+
+    // Update inverse for next group
+    if (g > 0) {
+      _ModMult(inverse, inverse, groupProd[g]);
+    }
+
+    // Compute local prefix products within the group
+    uint64_t localPrefix[GROUP_SIZE][4];
+    Load256(localPrefix[0], r[base]);
+    for (uint32_t i = 1; i < GROUP_SIZE; i++) {
+      _ModMult(localPrefix[i], localPrefix[i - 1], r[base + i]);
+    }
+
+    // Compute inverses for elements in this group
+    uint64_t localInv[5];
+    Load256(localInv, localPrefix[GROUP_SIZE - 1]);
+    localInv[4] = 0;
+    _ModMult(localInv, groupInv);
+
+    for (int i = GROUP_SIZE - 1; i > 0; i--) {
+      uint64_t current[4];
+      Load256(current, r[base + i]);
+      _ModMult(r[base + i], localPrefix[i - 1], localInv);
+      _ModMult(localInv, localInv, current);
+    }
+    Load256(r[base], localInv);
   }
 
-  Load256(r[0], inverse);
+  #undef GROUP_SIZE
+  #undef NUM_GROUPS
 
 }
