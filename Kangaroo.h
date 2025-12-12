@@ -139,7 +139,7 @@ public:
 
   Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,std::string &workFile,std::string &iWorkFile,
            uint32_t savePeriod,bool saveKangaroo,bool saveKangarooByServer,double maxStep,int wtimeout,int sport,int ntimeout,
-           std::string serverIp,std::string outputFile,bool splitWorkfile);
+           std::string serverIp,std::string outputFile,bool splitWorkfile,uint32_t randomSeed,bool seedProvided);
   void Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize);
   void RunServer();
   bool ParseConfigFile(std::string &fileName);
@@ -257,6 +257,8 @@ private:
   uint64_t dMask;
   uint32_t dpSize;
   int32_t initDPSize;
+  uint32_t randomSeed;
+  bool seedProvided;
   uint64_t collisionInSameHerd;
   uint64_t tameCount;
   uint64_t wildCount;

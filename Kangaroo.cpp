@@ -34,7 +34,7 @@ using namespace std;
 // ----------------------------------------------------------------------------
 
 Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFile,string &iWorkFile,uint32_t savePeriod,bool saveKangaroo,bool saveKangarooByServer,
-                   double maxStep,int wtimeout,int port,int ntimeout,string serverIp,string outputFile,bool splitWorkfile) {
+                   double maxStep,int wtimeout,int port,int ntimeout,string serverIp,string outputFile,bool splitWorkfile,uint32_t randomSeed,bool seedProvided) {
 
   this->secp = secp;
   this->initDPSize = initDPSize;
@@ -56,6 +56,8 @@ Kangaroo::Kangaroo(Secp256K1 *secp,int32_t initDPSize,bool useGpu,string &workFi
   this->ntimeout = ntimeout;
   this->serverIp = serverIp;
   this->outputFile = outputFile;
+  this->randomSeed = randomSeed;
+  this->seedProvided = seedProvided;
   this->hostInfo = NULL;
   this->endOfSearch = false;
   this->saveRequest = false;
@@ -806,8 +808,9 @@ void Kangaroo::CreateJumpTable() {
   //::printf("Jump Avg distance max: 2^%.2f\n",log2(maxAvg));
   
   // Kangaroo jumps
-  // Constant seed for compatibilty of workfiles
-  rseed(0x600DCAFE);
+  // Use deterministic seed; default remains the legacy constant for compatibility
+  unsigned long jumpSeed = seedProvided ? randomSeed : 0x600DCAFE;
+  rseed(jumpSeed);
 
 #ifdef USE_SYMMETRY
   Int old;
@@ -875,8 +878,7 @@ void Kangaroo::CreateJumpTable() {
 
   ::printf("Jump Avg distance: 2^%.2f\n",log2(distAvg));
 
-  unsigned long seed = Timer::getSeed32();
-  rseed(seed);
+  rseed(randomSeed);
 
 }
 
