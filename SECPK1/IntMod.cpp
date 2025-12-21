@@ -162,10 +162,11 @@ int64_t INV256[] = {
     -0LL,-17LL,-0LL,-123LL,-0LL,-29LL,-0LL,-199LL,-0LL,-73LL,-0LL,-115LL,-0LL,-21LL,-0LL,-255LL, };
 
 void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,int64_t* vu,int64_t* vv) {
+  (void)eta;
 
   // u' = (uu*u + uv*v) >> bitCount
   // v' = (vu*u + vv*v) >> bitCount
-  // Do not maintain a matrix for r and s, the number of 
+  // Do not maintain a matrix for r and s, the number of
   // 'added P' can be easily calculated
   // Performance are measured on a I5-8500 for P=2^256 - 0x1000003D1 (VS2019 compilation)
 
@@ -235,6 +236,7 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
   uint64_t vh;
   uint64_t w,x;
   unsigned char c = 0;
+  (void)c;
 
   // Extract 64 MSB of u and v
   // u and v must be positive
@@ -267,10 +269,10 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
     _v.m128i_u64[0] = 0;
     _v.m128i_u64[1] = 1;
   #else
-    ((int64_t *)&_u)[0] = 1;
-    ((int64_t *)&_u)[1] = 0;
-    ((int64_t *)&_v)[0] = 0;
-    ((int64_t *)&_v)[1] = 1;
+    int64_t u_vals[2] = {1, 0};
+    int64_t v_vals[2] = {0, 1};
+    memcpy(&_u, u_vals, sizeof(_u));
+    memcpy(&_v, v_vals, sizeof(_v));
   #endif
 #else
   _u.i64[0] = 1;
@@ -311,10 +313,13 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
     *vu = _v.m128i_u64[0];
     *vv = _v.m128i_u64[1];
   #else
-    *uu = ((int64_t *)&_u)[0];
-    *uv = ((int64_t *)&_u)[1];
-    *vu = ((int64_t *)&_v)[0];
-    *vv = ((int64_t *)&_v)[1];
+    int64_t u_result[2], v_result[2];
+    memcpy(u_result, &_u, sizeof(_u));
+    memcpy(v_result, &_v, sizeof(_v));
+    *uu = u_result[0];
+    *uv = u_result[1];
+    *vu = v_result[0];
+    *vv = v_result[1];
   #endif
 #else
   *uu = _u.i64[0];
@@ -623,7 +628,6 @@ void Int::ModExp(Int *e) {
 
   Int base(this);
   SetInt32(1);
-  uint32_t i = 0;
 
   uint32_t nbBit = e->GetBitLength();
   for(int i=0;i<(int)nbBit;i++) {
@@ -703,8 +707,6 @@ void Int::ModSqrt() {
     ModExp(&e);
 
   } else if ((_P.bits64[0] & 3) == 1) {
-
-    int nbBit = _P.GetBitLength();
 
     // Tonelli Shanks
     uint64_t e=0;

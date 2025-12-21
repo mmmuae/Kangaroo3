@@ -676,6 +676,8 @@ void Kangaroo::SolveKeyGPU(TH_PARAM *ph) {
 
 #else
 
+  (void)lastSent;
+  (void)thId;
   ph->hasStarted = true;
 
 #endif
@@ -732,7 +734,7 @@ void Kangaroo::CreateHerd(int nbKangaroo,Int *px,Int *py,Int *d,int firstType,bo
   // Choose random starting distance
   if(lock) LOCK(ghMutex);
 
-  for(uint64_t j = 0; j<nbKangaroo; j++) {
+  for(uint64_t j = 0; j<(uint64_t)nbKangaroo; j++) {
 
 #ifdef USE_SYMMETRY
 
@@ -763,7 +765,7 @@ void Kangaroo::CreateHerd(int nbKangaroo,Int *px,Int *py,Int *d,int firstType,bo
   // Compute starting pos
   S = secp->ComputePublicKeys(pk);
 
-  for(uint64_t j = 0; j<nbKangaroo; j++) {
+  for(uint64_t j = 0; j<(uint64_t)nbKangaroo; j++) {
     if((j + firstType) % 2 == TAME) {
       Sp.push_back(Z);
     } else {
@@ -773,7 +775,7 @@ void Kangaroo::CreateHerd(int nbKangaroo,Int *px,Int *py,Int *d,int firstType,bo
 
   S = secp->AddDirect(Sp,S);
 
-  for(uint64_t j = 0; j<nbKangaroo; j++) {
+  for(uint64_t j = 0; j<(uint64_t)nbKangaroo; j++) {
 
     px[j].Set(&S[j].x);
     py[j].Set(&S[j].y);
@@ -962,6 +964,7 @@ void Kangaroo::InitSearchKey() {
 // ----------------------------------------------------------------------------
 
 void Kangaroo::Run(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize) {
+  (void)gridSize;
 
   double t0 = Timer::get_tick();
 

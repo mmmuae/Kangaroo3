@@ -1178,7 +1178,7 @@ void Int::GCD(Int *a) {
 
 // ------------------------------------------------
 
-void Int::SetBase10(char *value) {  
+void Int::SetBase10(const char *value) {
 
   CLEAR();
   Int pw((uint64_t)1);
@@ -1196,7 +1196,7 @@ void Int::SetBase10(char *value) {
 
 // ------------------------------------------------
 
-void  Int::SetBase16(char *value) {  
+void  Int::SetBase16(const char *value) {
   SetBaseN(16,"0123456789ABCDEF",value);
 }
 
@@ -1254,7 +1254,7 @@ std::string Int::GetC64Str(int nbDigit) {
 
 // ------------------------------------------------
 
-void  Int::SetBaseN(int n,const char *charset,char *value) {
+void  Int::SetBaseN(int n,const char *charset,const char *value) {
 
   CLEAR();
 

@@ -93,7 +93,7 @@ std::vector<Point> Secp256K1::ComputePublicKeys(std::vector<Int> &privKeys) {
   Int *inv = new Int[privKeys.size()];
   pts.reserve(privKeys.size());
 
-  for(int i=0;i<privKeys.size();i++) {
+  for(int i=0;i<(int)privKeys.size();i++) {
     Point P = ComputePublicKey(&privKeys[i],false);
     inv[i].Set(&P.z);
     pts.push_back(P);
@@ -102,7 +102,7 @@ std::vector<Point> Secp256K1::ComputePublicKeys(std::vector<Int> &privKeys) {
   grp.Set(inv);
   grp.ModInv();
 
-  for(int i = 0; i<privKeys.size(); i++) {
+  for(int i = 0; i<(int)privKeys.size(); i++) {
     pts[i].x.ModMulK1(inv + i);
     pts[i].y.ModMulK1(inv + i);
     pts[i].z.SetInt32(1);
@@ -122,7 +122,7 @@ Point Secp256K1::NextKey(Point &key) {
 uint8_t Secp256K1::GetByte(std::string &str, int idx) {
 
   char tmp[3];
-  int  val;
+  unsigned int val;
 
   tmp[0] = str.data()[2 * idx];
   tmp[1] = str.data()[2 * idx + 1];

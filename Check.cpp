@@ -57,7 +57,7 @@ uint32_t Kangaroo::CheckHash(uint32_t h,uint32_t nbItem,HashTable* hT,FILE* f) {
     items = (ENTRY*)malloc(nbItem * sizeof(ENTRY));
 
     for(uint32_t i = 0; i < nbItem; i++) {
-      ::fread(items+i,sizeof(ENTRY),1,f);
+      if(::fread(items+i,sizeof(ENTRY),1,f)) {}
       e = items + i;
       Int dist;
       uint32_t kType = e->kType;
@@ -123,8 +123,8 @@ bool Kangaroo::CheckPartition(TH_PARAM* p) {
 
     uint32_t nbItem;
     uint32_t maxItem;
-    (void)::fread(&nbItem,sizeof(uint32_t),1,f1);
-    (void)::fread(&maxItem,sizeof(uint32_t),1,f1);
+    if(::fread(&nbItem,sizeof(uint32_t),1,f1)) {}
+    if(::fread(&maxItem,sizeof(uint32_t),1,f1)) {}
 
     if(nbItem == 0)
       continue;
@@ -200,13 +200,13 @@ void Kangaroo::CheckPartition(int nbCore,std::string& partName) {
   Int RE1;
 
   // Read global param
-  ::fread(&dp1,sizeof(uint32_t),1,f1);
-  ::fread(&RS1.bits64,32,1,f1); RS1.bits64[4] = 0;
-  ::fread(&RE1.bits64,32,1,f1); RE1.bits64[4] = 0;
-  ::fread(&k1.x.bits64,32,1,f1); k1.x.bits64[4] = 0;
-  ::fread(&k1.y.bits64,32,1,f1); k1.y.bits64[4] = 0;
-  ::fread(&count1,sizeof(uint64_t),1,f1);
-  ::fread(&time1,sizeof(double),1,f1);
+  if(::fread(&dp1,sizeof(uint32_t),1,f1)) {}
+  if(::fread(&RS1.bits64,32,1,f1)) {} RS1.bits64[4] = 0;
+  if(::fread(&RE1.bits64,32,1,f1)) {} RE1.bits64[4] = 0;
+  if(::fread(&k1.x.bits64,32,1,f1)) {} k1.x.bits64[4] = 0;
+  if(::fread(&k1.y.bits64,32,1,f1)) {} k1.y.bits64[4] = 0;
+  if(::fread(&count1,sizeof(uint64_t),1,f1)) {}
+  if(::fread(&time1,sizeof(double),1,f1)) {}
 
   k1.z.SetInt32(1);
   if(!secp->EC(k1)) {
@@ -317,13 +317,13 @@ void Kangaroo::CheckWorkFile(int nbCore,std::string& fileName) {
   Int RE1;
 
   // Read global param
-  ::fread(&dp1,sizeof(uint32_t),1,f1);
-  ::fread(&RS1.bits64,32,1,f1); RS1.bits64[4] = 0;
-  ::fread(&RE1.bits64,32,1,f1); RE1.bits64[4] = 0;
-  ::fread(&k1.x.bits64,32,1,f1); k1.x.bits64[4] = 0;
-  ::fread(&k1.y.bits64,32,1,f1); k1.y.bits64[4] = 0;
-  ::fread(&count1,sizeof(uint64_t),1,f1);
-  ::fread(&time1,sizeof(double),1,f1);
+  if(::fread(&dp1,sizeof(uint32_t),1,f1)) {}
+  if(::fread(&RS1.bits64,32,1,f1)) {} RS1.bits64[4] = 0;
+  if(::fread(&RE1.bits64,32,1,f1)) {} RE1.bits64[4] = 0;
+  if(::fread(&k1.x.bits64,32,1,f1)) {} k1.x.bits64[4] = 0;
+  if(::fread(&k1.y.bits64,32,1,f1)) {} k1.y.bits64[4] = 0;
+  if(::fread(&count1,sizeof(uint64_t),1,f1)) {}
+  if(::fread(&time1,sizeof(double),1,f1)) {}
 
   k1.z.SetInt32(1);
   if(!secp->EC(k1)) {
@@ -412,6 +412,8 @@ void Kangaroo::CheckWorkFile(int nbCore,std::string& fileName) {
 
 
 void Kangaroo::Check(std::vector<int> gpuId,std::vector<int> gridSize) {
+  (void)gpuId;
+  (void)gridSize;
 
   Int::Check();
 

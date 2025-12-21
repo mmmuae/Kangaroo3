@@ -150,9 +150,9 @@ public:
   // Setter
   void SetInt32(uint32_t value);
   void Set(Int *a);
-  void SetBase10(char *value);
-  void SetBase16(char *value);
-  void SetBaseN(int n,const char *charset,char *value);
+  void SetBase10(const char *value);
+  void SetBase16(const char *value);
+  void SetBaseN(int n,const char *charset,const char *value);
   void SetByte(int n,unsigned char byte);
   void SetDWord(int n, uint32_t b);
   void SetQWord(int n,uint64_t b);
