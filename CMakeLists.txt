@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Kangaroo256 LANGUAGES CXX)
+project(Kangaroo LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,7 +15,7 @@ endif()
 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG" CACHE STRING "" FORCE)
 
-set(KANGAROO256_SOURCES
+set(KANGAROO_SOURCES
   Backup.cpp
   Check.cpp
   HashTable.cpp
@@ -34,14 +34,14 @@ set(KANGAROO256_SOURCES
   SECPK1/SECP256K1.cpp
 )
 
-add_executable(kangaroo256 ${KANGAROO256_SOURCES})
-target_include_directories(kangaroo256 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_executable(kangaroo ${KANGAROO_SOURCES})
+target_include_directories(kangaroo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-  target_compile_options(kangaroo256 PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(kangaroo PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 find_package(Threads REQUIRED)
-target_link_libraries(kangaroo256 PRIVATE Threads::Threads)
+target_link_libraries(kangaroo PRIVATE Threads::Threads)
 
-install(TARGETS kangaroo256 RUNTIME DESTINATION bin)
+install(TARGETS kangaroo RUNTIME DESTINATION bin)

@@ -65,13 +65,13 @@ bool Kangaroo::MergeWork(std::string& file1,std::string& file2,std::string& dest
   Int RE1;
 
   // Read global param
-  ::fread(&dp1,sizeof(uint32_t),1,f1);
-  ::fread(&RS1.bits64,32,1,f1); RS1.bits64[4] = 0;
-  ::fread(&RE1.bits64,32,1,f1); RE1.bits64[4] = 0;
-  ::fread(&k1.x.bits64,32,1,f1); k1.x.bits64[4] = 0;
-  ::fread(&k1.y.bits64,32,1,f1); k1.y.bits64[4] = 0;
-  ::fread(&count1,sizeof(uint64_t),1,f1);
-  ::fread(&time1,sizeof(double),1,f1);
+  if(::fread(&dp1,sizeof(uint32_t),1,f1)) {}
+  if(::fread(&RS1.bits64,32,1,f1)) {} RS1.bits64[4] = 0;
+  if(::fread(&RE1.bits64,32,1,f1)) {} RE1.bits64[4] = 0;
+  if(::fread(&k1.x.bits64,32,1,f1)) {} k1.x.bits64[4] = 0;
+  if(::fread(&k1.y.bits64,32,1,f1)) {} k1.y.bits64[4] = 0;
+  if(::fread(&count1,sizeof(uint64_t),1,f1)) {}
+  if(::fread(&time1,sizeof(double),1,f1)) {}
 
   k1.z.SetInt32(1);
   if(!secp->EC(k1)) {
@@ -97,13 +97,13 @@ bool Kangaroo::MergeWork(std::string& file1,std::string& file2,std::string& dest
   Int RE2;
 
   // Read global param
-  ::fread(&dp2,sizeof(uint32_t),1,f2);
-  ::fread(&RS2.bits64,32,1,f2); RS2.bits64[4] = 0;
-  ::fread(&RE2.bits64,32,1,f2); RE2.bits64[4] = 0;
-  ::fread(&k2.x.bits64,32,1,f2); k2.x.bits64[4] = 0;
-  ::fread(&k2.y.bits64,32,1,f2); k2.y.bits64[4] = 0;
-  ::fread(&count2,sizeof(uint64_t),1,f2);
-  ::fread(&time2,sizeof(double),1,f2);
+  if(::fread(&dp2,sizeof(uint32_t),1,f2)) {}
+  if(::fread(&RS2.bits64,32,1,f2)) {} RS2.bits64[4] = 0;
+  if(::fread(&RE2.bits64,32,1,f2)) {} RE2.bits64[4] = 0;
+  if(::fread(&k2.x.bits64,32,1,f2)) {} k2.x.bits64[4] = 0;
+  if(::fread(&k2.y.bits64,32,1,f2)) {} k2.y.bits64[4] = 0;
+  if(::fread(&count2,sizeof(uint64_t),1,f2)) {}
+  if(::fread(&time2,sizeof(double),1,f2)) {}
 
   if(v1 != v2) {
     ::printf("MergeWork: cannot merge workfile of different version\n");
@@ -254,6 +254,7 @@ bool sortBySize(const File& lhs,const File& rhs) { return lhs.size > rhs.size; }
 
 void Kangaroo::MergeDir(std::string& dirName,std::string& dest) {
 
+  (void)dest;
   vector<File> listFiles;
 
 #ifdef WIN64
@@ -332,7 +333,6 @@ void Kangaroo::MergeDir(std::string& dirName,std::string& dest) {
       return;
     }
 
-    int i = 0;
     ::printf("\n## File #1/%d\n",lgth - 1);
     bool end = MergeWork(listFiles[0].name,listFiles[1].name,dest,lgth == 2);
     for(int i = 2; i < lgth && !end; i++) {

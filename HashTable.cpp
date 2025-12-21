@@ -87,6 +87,7 @@ ENTRY *HashTable::CreateEntry(int256_t *x,int256_t *d,uint32_t type) {
   E[h].nbItem++;}
 
 void HashTable::Convert(Int *x,Int *d,uint32_t type,uint64_t *h,int256_t *X,int256_t *D) {
+  (void)type;
 
   // Copy all 256 bits of position
   X->i64[0] = x->bits64[0];
@@ -105,10 +106,11 @@ void HashTable::Convert(Int *x,Int *d,uint32_t type,uint64_t *h,int256_t *X,int2
 }
 
 
-#define AV1() if(pnb1) { ::fread(&e1,sizeof(ENTRY),1,f1); pnb1--; }
-#define AV2() if(pnb2) { ::fread(&e2,sizeof(ENTRY),1,f2); pnb2--; }
+#define AV1() if(pnb1) { if(::fread(&e1,sizeof(ENTRY),1,f1)) {} pnb1--; }
+#define AV2() if(pnb2) { if(::fread(&e2,sizeof(ENTRY),1,f2)) {} pnb2--; }
 
 int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint32_t *duplicate,Int* d1,uint32_t* k1,Int* d2,uint32_t* k2) {
+  (void)h;
 
   // Merge by line
   // N comparison but avoid slow item allocation
@@ -121,10 +123,10 @@ int HashTable::MergeH(uint32_t h,FILE* f1,FILE* f2,FILE* fd,uint32_t* nbDP,uint3
   *duplicate = 0;
   *nbDP = 0;
 
-  ::fread(&nb1,sizeof(uint32_t),1,f1);
-  ::fread(&m1,sizeof(uint32_t),1,f1);
-  ::fread(&nb2,sizeof(uint32_t),1,f2);
-  ::fread(&m2,sizeof(uint32_t),1,f2);
+  if(::fread(&nb1,sizeof(uint32_t),1,f1)) {}
+  if(::fread(&m1,sizeof(uint32_t),1,f1)) {}
+  if(::fread(&nb2,sizeof(uint32_t),1,f2)) {}
+  if(::fread(&m2,sizeof(uint32_t),1,f2)) {}
 
   // Maximum in destination
   uint32_t nbd = 0;
@@ -341,11 +343,11 @@ int HashTable::compare(int256_t *i1,int256_t *i2) {
 
 std::string HashTable::GetSizeInfo() {
 
-  char *unit;
+  const char *unit;
   uint64_t totalByte = sizeof(E);
   uint64_t usedByte = HASH_SIZE*2*sizeof(uint32_t);
 
-  for (int h = 0; h < HASH_SIZE; h++) {
+  for (uint32_t h = 0; h < HASH_SIZE; h++) {
     totalByte += sizeof(ENTRY *) * E[h].maxItem;
     totalByte += sizeof(ENTRY) * E[h].nbItem;
     usedByte += sizeof(ENTRY) * E[h].nbItem;
@@ -366,7 +368,7 @@ std::string HashTable::GetSizeInfo() {
   }
 
   char ret[256];
-  sprintf(ret,"%.1f/%.1f%s",usedMB,totalMB,unit);
+  snprintf(ret, sizeof(ret), "%.1f/%.1f%s", usedMB, totalMB, unit);
 
   return std::string(ret);
 
@@ -377,7 +379,7 @@ std::string HashTable::GetStr(int256_t *i) {
   std::string ret;
   char tmp[256];
   for(int n=7;n>=0;n--) {
-    ::sprintf(tmp,"%08X",i->i32[n]);
+    ::snprintf(tmp, sizeof(tmp), "%08X", i->i32[n]);
     ret += std::string(tmp);
   }
   return ret;
@@ -439,8 +441,8 @@ void HashTable::SeekNbItem(FILE* f,uint32_t from,uint32_t to) {
 
   for(uint32_t h = from; h < to; h++) {
 
-    fread(&E[h].nbItem,sizeof(uint32_t),1,f);
-    fread(&E[h].maxItem,sizeof(uint32_t),1,f);
+    if(fread(&E[h].nbItem,sizeof(uint32_t),1,f)) {}
+    if(fread(&E[h].maxItem,sizeof(uint32_t),1,f)) {}
 
     uint64_t hSize = 68ULL * E[h].nbItem;  // 32 (x) + 32 (d) + 4 (kType)
 #ifdef WIN64
@@ -459,8 +461,8 @@ void HashTable::LoadTable(FILE* f,uint32_t from,uint32_t to) {
 
   for(uint32_t h = from; h < to; h++) {
 
-    fread(&E[h].nbItem,sizeof(uint32_t),1,f);
-    fread(&E[h].maxItem,sizeof(uint32_t),1,f);
+    if(fread(&E[h].nbItem,sizeof(uint32_t),1,f)) {}
+    if(fread(&E[h].maxItem,sizeof(uint32_t),1,f)) {}
 
     if(E[h].maxItem > 0)
       // Allocate indexes
@@ -468,9 +470,9 @@ void HashTable::LoadTable(FILE* f,uint32_t from,uint32_t to) {
 
     for(uint32_t i = 0; i < E[h].nbItem; i++) {
       ENTRY* e = (ENTRY*)malloc(sizeof(ENTRY));
-      fread(&(e->x),32,1,f);
-      fread(&(e->d),32,1,f);
-      fread(&(e->kType),sizeof(uint32_t),1,f);
+      if(fread(&(e->x),32,1,f)) {}
+      if(fread(&(e->d),32,1,f)) {}
+      if(fread(&(e->kType),sizeof(uint32_t),1,f)) {}
       E[h].items[i] = e;
     }
 

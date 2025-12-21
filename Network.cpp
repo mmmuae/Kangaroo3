@@ -81,7 +81,7 @@ string GetNetworkError() {
 
   if(!found) {
     char ret[256];
-    sprintf(ret,"WSA Error code %d",err);
+    snprintf(ret, sizeof(ret), "WSA Error code %d", err);
     return string(ret);
   } else {
     return string(WSAERRORS[i].mesg);
@@ -323,7 +323,7 @@ bool Kangaroo::HandleRequest(TH_PARAM *p) {
       char response[5];
       collisionInSameHerd = 0;
       GET("flush",p->clientSock,&response,2,ntimeout);
-      sprintf(response,"OK\n");
+      snprintf(response, sizeof(response), "OK\n");
       PUT("resp",p->clientSock,&response,3,ntimeout);
     } break;
 
@@ -372,8 +372,8 @@ bool Kangaroo::HandleRequest(TH_PARAM *p) {
         CLIENT_ABORT();
       }
 
-      ::fread(&version,sizeof(uint32_t),1,f);
-      ::fread(&nbKangaroo,sizeof(uint64_t),1,f);
+      if(::fread(&version,sizeof(uint32_t),1,f)) {}
+      if(::fread(&nbKangaroo,sizeof(uint64_t),1,f)) {}
 
       PUT("nbKangaroo",p->clientSock,&nbKangaroo,sizeof(uint64_t),ntimeout);
 
@@ -389,7 +389,7 @@ bool Kangaroo::HandleRequest(TH_PARAM *p) {
         }
 
         for(uint32_t k = 0; k < nbK; k++) {
-          ::fread(&KBuff[k],16,1,f);
+          if(::fread(&KBuff[k],16,1,f)) {}
           // Checksum
           K.SetInt32(0);
           K.bits64[1] = KBuff[k].i64[1];
@@ -535,7 +535,7 @@ bool Kangaroo::HandleRequest(TH_PARAM *p) {
         state = GetServerStatus();
         PUTFREE("Status",p->clientSock,&state,sizeof(int32_t),ntimeout,dp);
 
-        if(nbRead != sizeof(DP)* head.nbDP) {
+        if(nbRead != (int)(sizeof(DP)* head.nbDP)) {
 
           ::printf("\nUnexpected DP size from %s [nbDP=%d,Got %d,Expected %d]\n",
             p->clientInfo,head.nbDP,nbRead,(int)(sizeof(DP)* head.nbDP));
@@ -660,7 +660,7 @@ void Kangaroo::AcceptConnections(SOCKET server_soc) {
       TH_PARAM *p = (TH_PARAM *)malloc(sizeof(TH_PARAM));
       ::memset(p,0,sizeof(TH_PARAM));
       char info[256];
-      ::sprintf(info,"%s:%d",inet_ntoa(client_add.sin_addr),ntohs(client_add.sin_port));
+      ::snprintf(info, sizeof(info), "%s:%d", inet_ntoa(client_add.sin_addr), ntohs(client_add.sin_port));
 #ifdef WIN64
       p->clientInfo = ::_strdup(info);
 #else
