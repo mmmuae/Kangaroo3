@@ -56,7 +56,8 @@ typedef pthread_t THREAD_HANDLE;
 class Kangaroo;
 
 // Input thread parameters
-typedef struct {
+// Cache-aligned for M1 Max performance cores (64-byte cache lines)
+typedef struct alignas(64) {
 
   Kangaroo *obj;
   int  threadId;
@@ -78,7 +79,7 @@ typedef struct {
 #ifdef USE_SYMMETRY
   uint64_t *symClass; // Last jump
 #endif
-  
+
   SOCKET clientSock;
   char  *clientInfo;
 

@@ -19,12 +19,36 @@
 #include <string.h>
 #include <stdint.h>
 
-// Detect SSE2 support
+// Detect SIMD support
 #if defined(__x86_64__) || defined(_M_X64) || (defined(__i386__) || defined(_M_IX86))
   #define HAS_SSE2 1
   #include <emmintrin.h>
+#elif defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
+  // ARM NEON support for Apple Silicon
+  #define HAS_NEON 1
+  #include <arm_neon.h>
+
+  // Map NEON types to SSE2-like interface for compatibility
+  typedef int64x2_t __m128i;
+
+  #define _mm_slli_epi64(a, count) vshlq_n_s64(a, count)
+  #define _mm_add_epi64(a, b) vaddq_s64(a, b)
+  #define _mm_sub_epi64(a, b) vsubq_s64(a, b)
+  #define _mm_set_epi64x(hi, lo) vcombine_s64(vcreate_s64(lo), vcreate_s64(hi))
+  #define _mm_cvtsi128_si64(a) vgetq_lane_s64(a, 0)
+
+  // Helper to extract high 64 bits
+  static inline int64_t _mm_extract_epi64(__m128i a, int index) {
+    return vgetq_lane_s64(a, index);
+  }
+
+  // Helper to set both lanes
+  static inline __m128i _mm_set1_epi64x(int64_t val) {
+    return vdupq_n_s64(val);
+  }
+
 #else
-  // FakeM128i fallback for non-SSE2 platforms (ARM64, etc.)
+  // FakeM128i fallback for other platforms
   typedef struct {
     int64_t i64[2];
   } FakeM128i;
@@ -262,7 +286,7 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
   __m128i _v;
   __m128i _t;
 
-#ifdef HAS_SSE2
+#if defined(HAS_SSE2)
   #ifdef WIN64
     _u.m128i_u64[0] = 1;
     _u.m128i_u64[1] = 0;
@@ -274,6 +298,10 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
     memcpy(&_u, u_vals, sizeof(_u));
     memcpy(&_v, v_vals, sizeof(_v));
   #endif
+#elif defined(HAS_NEON)
+  // ARM NEON initialization
+  _u = _mm_set_epi64x(0, 1);  // {1, 0}
+  _v = _mm_set_epi64x(1, 0);  // {0, 1}
 #else
   _u.i64[0] = 1;
   _u.i64[1] = 0;
@@ -306,7 +334,7 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
 
   }
 
-#ifdef HAS_SSE2
+#if defined(HAS_SSE2)
   #ifdef WIN64
     *uu = _u.m128i_u64[0];
     *uv = _u.m128i_u64[1];
@@ -321,6 +349,12 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
     *vu = v_result[0];
     *vv = v_result[1];
   #endif
+#elif defined(HAS_NEON)
+  // ARM NEON extraction
+  *uu = _mm_extract_epi64(_u, 0);
+  *uv = _mm_extract_epi64(_u, 1);
+  *vu = _mm_extract_epi64(_v, 0);
+  *vv = _mm_extract_epi64(_v, 1);
 #else
   *uu = _u.i64[0];
   *uv = _u.i64[1];
