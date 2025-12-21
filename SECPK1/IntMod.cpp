@@ -1004,7 +1004,7 @@ void Int::ModMulK1(Int *a) {
 #if (__GNUC__ > 7) || (__GNUC__ == 7 && (__GNUC_MINOR__ > 2))
   unsigned char c;
 #else
-  #warning "GCC lass than 7.3 detected, upgrade gcc to get best perfromance"
+  #pragma message("GCC less than 7.3 detected, upgrade gcc to get best performance")
   volatile unsigned char c;
 #endif
 #else
@@ -1082,7 +1082,7 @@ void Int::ModSquareK1(Int *a) {
 #if (__GNUC__ > 7) || (__GNUC__ == 7 && (__GNUC_MINOR__ > 2))
   unsigned char c;
 #else
-  #warning "GCC lass than 7.3 detected, upgrade gcc to get best perfromance"
+  #pragma message("GCC less than 7.3 detected, upgrade gcc to get best performance")
   volatile unsigned char c;
 #endif
 #else

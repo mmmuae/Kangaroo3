@@ -152,7 +152,7 @@ public:
   void Set(Int *a);
   void SetBase10(char *value);
   void SetBase16(char *value);
-  void SetBaseN(int n,char *charset,char *value);
+  void SetBaseN(int n,const char *charset,char *value);
   void SetByte(int n,unsigned char byte);
   void SetDWord(int n, uint32_t b);
   void SetQWord(int n,uint64_t b);
@@ -171,7 +171,7 @@ public:
   std::string GetBase2();
   std::string GetBase10();
   std::string GetBase16();
-  std::string GetBaseN(int n,char *charset);
+  std::string GetBaseN(int n,const char *charset);
   std::string GetBlockStr();
   std::string GetC64Str(int nbDigit);
 

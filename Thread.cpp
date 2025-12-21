@@ -132,11 +132,11 @@ string Kangaroo::GetTimeStr(double dTime) {
     double nbYear = nbDay / 365.0;
     if (nbYear > 1) {
       if (nbYear < 5)
-        sprintf(tmp, "%.1fy", nbYear);
+        snprintf(tmp, sizeof(tmp), "%.1fy", nbYear);
       else
-        sprintf(tmp, "%gy", nbYear);
+        snprintf(tmp, sizeof(tmp), "%gy", nbYear);
     } else {
-      sprintf(tmp, "%.1fd", nbDay);
+      snprintf(tmp, sizeof(tmp), "%.1fd", nbDay);
     }
 
   } else {
@@ -148,12 +148,12 @@ string Kangaroo::GetTimeStr(double dTime) {
 
     if (nbHour == 0) {
       if (nbMin == 0) {
-        sprintf(tmp, "%02ds", nbSec);
+        snprintf(tmp, sizeof(tmp), "%02ds", nbSec);
       } else {
-        sprintf(tmp, "%02d:%02d", nbMin, nbSec);
+        snprintf(tmp, sizeof(tmp), "%02d:%02d", nbMin, nbSec);
       }
     } else {
-      sprintf(tmp, "%02d:%02d:%02d", nbHour, nbMin, nbSec);
+      snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", nbHour, nbMin, nbSec);
     }
 
   }
@@ -179,13 +179,7 @@ void Kangaroo::ProcessServer() {
   ghMutex = CreateMutex(NULL,FALSE,NULL);
 #endif
 
-  uint32_t scanOffset = 0;
-  uint32_t bucketsPerScan = HASH_SIZE >> 3; // scan 1/8th of the table per pass
-  if(bucketsPerScan == 0) bucketsPerScan = 1;
-
-  std::vector<int256_t> distances;
-  std::vector<int256_t> rawDistances;
-  std::vector<uint32_t> herdTypes;
+  (void)lastSave;
 
   while(!endOfSearch) {
 
@@ -525,6 +519,7 @@ void Kangaroo::Process(TH_PARAM *params,std::string unit) {
 
 void Kangaroo::ScanGapsThread(TH_PARAM *p) {
 
+  (void)p;
   // Background thread for periodic gap tracking
   // This runs independently and doesn't affect the critical path
 

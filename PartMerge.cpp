@@ -36,16 +36,16 @@ string Kangaroo::GetPartName(std::string& partName,int i,bool tmpPart) {
 
   char tmp[256];
   if(tmpPart)
-    sprintf(tmp,"part%03d.tmp",i);
+    snprintf(tmp, sizeof(tmp), "part%03d.tmp", i);
   else
-    sprintf(tmp,"part%03d",i);
+    snprintf(tmp, sizeof(tmp), "part%03d", i);
   string pName = partName + "/" + string(tmp);
 
   return pName;
 
 }
 
-FILE * Kangaroo::OpenPart(std::string& partName,char *mode,int i,bool tmpPart) {
+FILE * Kangaroo::OpenPart(std::string& partName,const char *mode,int i,bool tmpPart) {
 
   string fName = GetPartName(partName,i,tmpPart);
   FILE* f = fopen(fName.c_str(),mode);

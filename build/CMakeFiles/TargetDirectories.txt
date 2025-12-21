@@ -1,0 +1,7 @@
+/home/user/Kangaroo3/build/CMakeFiles/kangaroo.dir
+/home/user/Kangaroo3/build/CMakeFiles/edit_cache.dir
+/home/user/Kangaroo3/build/CMakeFiles/rebuild_cache.dir
+/home/user/Kangaroo3/build/CMakeFiles/list_install_components.dir
+/home/user/Kangaroo3/build/CMakeFiles/install.dir
+/home/user/Kangaroo3/build/CMakeFiles/install/local.dir
+/home/user/Kangaroo3/build/CMakeFiles/install/strip.dir

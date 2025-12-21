@@ -32,7 +32,7 @@ using namespace std;
 
 uint32_t Kangaroo::CheckHash(uint32_t h,uint32_t nbItem,HashTable* hT,FILE* f) {
 
-  bool ok=true;
+  (void)h;
   vector<Int> dists;
   vector<uint32_t> types;
   Point Z;
@@ -89,7 +89,7 @@ uint32_t Kangaroo::CheckHash(uint32_t h,uint32_t nbItem,HashTable* hT,FILE* f) {
     else      e = items + i;
 
     uint32_t hC = (uint32_t)HashTable::HashIndex(&S[i].x);
-    ok = (hC == h) && (S[i].x.bits64[0] == e->x.i64[0]) && (S[i].x.bits64[1] == e->x.i64[1]);
+    bool ok = (hC == h) && (S[i].x.bits64[0] == e->x.i64[0]) && (S[i].x.bits64[1] == e->x.i64[1]);
     if(!ok) nbWrong++;
     //if(!ok) {
     //  ::printf("\nCheckWorkFile wrong at: %06X [%d]\n",h,i);
@@ -123,8 +123,8 @@ bool Kangaroo::CheckPartition(TH_PARAM* p) {
 
     uint32_t nbItem;
     uint32_t maxItem;
-    ::fread(&nbItem,sizeof(uint32_t),1,f1);
-    ::fread(&maxItem,sizeof(uint32_t),1,f1);
+    (void)::fread(&nbItem,sizeof(uint32_t),1,f1);
+    (void)::fread(&maxItem,sizeof(uint32_t),1,f1);
 
     if(nbItem == 0)
       continue;

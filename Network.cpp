@@ -81,7 +81,7 @@ string GetNetworkError() {
 
   if(!found) {
     char ret[256];
-    sprintf(ret,"WSA Error code %d",err);
+    snprintf(ret, sizeof(ret), "WSA Error code %d", err);
     return string(ret);
   } else {
     return string(WSAERRORS[i].mesg);
@@ -323,7 +323,7 @@ bool Kangaroo::HandleRequest(TH_PARAM *p) {
       char response[5];
       collisionInSameHerd = 0;
       GET("flush",p->clientSock,&response,2,ntimeout);
-      sprintf(response,"OK\n");
+      snprintf(response, sizeof(response), "OK\n");
       PUT("resp",p->clientSock,&response,3,ntimeout);
     } break;
 
@@ -660,7 +660,7 @@ void Kangaroo::AcceptConnections(SOCKET server_soc) {
       TH_PARAM *p = (TH_PARAM *)malloc(sizeof(TH_PARAM));
       ::memset(p,0,sizeof(TH_PARAM));
       char info[256];
-      ::sprintf(info,"%s:%d",inet_ntoa(client_add.sin_addr),ntohs(client_add.sin_port));
+      ::snprintf(info, sizeof(info), "%s:%d", inet_ntoa(client_add.sin_addr), ntohs(client_add.sin_port));
 #ifdef WIN64
       p->clientInfo = ::_strdup(info);
 #else

@@ -254,6 +254,7 @@ bool sortBySize(const File& lhs,const File& rhs) { return lhs.size > rhs.size; }
 
 void Kangaroo::MergeDir(std::string& dirName,std::string& dest) {
 
+  (void)dest;
   vector<File> listFiles;
 
 #ifdef WIN64
@@ -332,7 +333,6 @@ void Kangaroo::MergeDir(std::string& dirName,std::string& dest) {
       return;
     }
 
-    int i = 0;
     ::printf("\n## File #1/%d\n",lgth - 1);
     bool end = MergeWork(listFiles[0].name,listFiles[1].name,dest,lgth == 2);
     for(int i = 2; i < lgth && !end; i++) {

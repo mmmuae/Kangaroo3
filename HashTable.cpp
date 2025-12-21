@@ -341,11 +341,11 @@ int HashTable::compare(int256_t *i1,int256_t *i2) {
 
 std::string HashTable::GetSizeInfo() {
 
-  char *unit;
+  const char *unit;
   uint64_t totalByte = sizeof(E);
   uint64_t usedByte = HASH_SIZE*2*sizeof(uint32_t);
 
-  for (int h = 0; h < HASH_SIZE; h++) {
+  for (uint32_t h = 0; h < HASH_SIZE; h++) {
     totalByte += sizeof(ENTRY *) * E[h].maxItem;
     totalByte += sizeof(ENTRY) * E[h].nbItem;
     usedByte += sizeof(ENTRY) * E[h].nbItem;
@@ -366,7 +366,7 @@ std::string HashTable::GetSizeInfo() {
   }
 
   char ret[256];
-  sprintf(ret,"%.1f/%.1f%s",usedMB,totalMB,unit);
+  snprintf(ret, sizeof(ret), "%.1f/%.1f%s", usedMB, totalMB, unit);
 
   return std::string(ret);
 
@@ -377,7 +377,7 @@ std::string HashTable::GetStr(int256_t *i) {
   std::string ret;
   char tmp[256];
   for(int n=7;n>=0;n--) {
-    ::sprintf(tmp,"%08X",i->i32[n]);
+    ::snprintf(tmp, sizeof(tmp), "%08X", i->i32[n]);
     ret += std::string(tmp);
   }
   return ret;
