@@ -22,6 +22,19 @@
 #include <string.h>
 #endif
 
+// Prefetch support for Apple Silicon M1 Max
+#if defined(__aarch64__) || defined(__arm64__)
+  #define PREFETCH_READ(addr) __builtin_prefetch((addr), 0, 3)
+  #define PREFETCH_WRITE(addr) __builtin_prefetch((addr), 1, 3)
+#elif defined(__x86_64__) || defined(_M_X64)
+  #include <xmmintrin.h>
+  #define PREFETCH_READ(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
+  #define PREFETCH_WRITE(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
+#else
+  #define PREFETCH_READ(addr) ((void)0)
+  #define PREFETCH_WRITE(addr) ((void)0)
+#endif
+
 #define GET(hash,id) E[hash].items[id]
 
 HashTable::HashTable() {
@@ -270,6 +283,9 @@ void HashTable::CalcDist(int256_t *d,Int* kDist) {
 
 int HashTable::Add(uint64_t h,ENTRY* e) {
 
+  // Prefetch hash table entry to reduce cache miss latency
+  PREFETCH_READ(&E[h]);
+
   if(E[h].maxItem == 0) {
     E[h].maxItem = 16;
     E[h].items = (ENTRY **)malloc(sizeof(ENTRY *) * E[h].maxItem);
@@ -291,6 +307,10 @@ int HashTable::Add(uint64_t h,ENTRY* e) {
   st = 0; ed = E[h].nbItem - 1;
   while(st <= ed) {
     mi = (st + ed) / 2;
+
+    // Prefetch the entry we're about to compare
+    PREFETCH_READ(GET(h,mi));
+
     int comp = compare(&e->x,&GET(h,mi)->x);
     if(comp<0) {
       ed = mi - 1;
